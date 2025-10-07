@@ -228,7 +228,7 @@ const OrderHistoryPage = () => {
                       <div className="text-right">
                         <p className="text-sm text-gray-500">Total Amount</p>
                         <p className="text-xl font-bold text-forest-green">
-                          ${order.total_amount.toFixed(2)}
+                          ₹{order.total_amount.toFixed(2)}
                         </p>
                       </div>
 

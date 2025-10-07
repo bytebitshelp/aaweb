@@ -137,7 +137,6 @@ const ArtworkCard = ({ artwork, onView }) => {
       {/* Content */}
       <div className="p-4">
         <div className="mb-2">
-          <p className="text-sm text-gray-600 font-medium">{artwork.artist_name}</p>
           <h3 className="text-lg font-semibold text-gray-900 line-clamp-1">
             {artwork.title}
           </h3>
@@ -150,7 +149,7 @@ const ArtworkCard = ({ artwork, onView }) => {
         <div className="flex items-center justify-between">
           <div>
             <span className="text-xl font-bold text-forest-green">
-              ${artwork.price}
+              ₹{artwork.price}
             </span>
             {artwork.quantity_available > 0 && (
               <p className="text-xs text-gray-500">

@@ -93,8 +93,7 @@ const CartModal = ({ isOpen, onClose }) => {
                   {/* Item Details */}
                   <div className="flex-1 min-w-0">
                     <h4 className="text-sm font-medium text-gray-900 truncate">{item.title}</h4>
-                    <p className="text-sm text-gray-500">by {item.artist_name}</p>
-                    <p className="text-sm font-medium text-forest-green">${item.price}</p>
+                    <p className="text-sm font-medium text-forest-green">₹{item.price}</p>
                   </div>
 
                   {/* Quantity Controls */}
@@ -117,7 +116,7 @@ const CartModal = ({ isOpen, onClose }) => {
 
                   {/* Total Price */}
                   <div className="text-sm font-medium text-gray-900">
-                    ${(item.price * item.quantity).toFixed(2)}
+                    ₹{(item.price * item.quantity).toFixed(2)}
                   </div>
 
                   {/* Remove Button */}
@@ -139,7 +138,7 @@ const CartModal = ({ isOpen, onClose }) => {
             <div className="flex items-center justify-between mb-4">
               <span className="text-lg font-medium text-gray-900">Total:</span>
               <span className="text-xl font-bold text-forest-green">
-                ${getTotalPrice().toFixed(2)}
+                ₹{getTotalPrice().toFixed(2)}
               </span>
             </div>
             

@@ -107,7 +107,7 @@ const ProductPopup = ({ product, isOpen, onClose }) => {
                     <DollarSign className="w-5 h-5 text-forest-green" />
                     <h4 className="font-medium text-gray-900">Price</h4>
                   </div>
-                  <p className="text-2xl font-bold text-forest-green">${product.price}</p>
+                  <p className="text-2xl font-bold text-forest-green">₹{product.price}</p>
                 </div>
 
                 {/* Availability */}

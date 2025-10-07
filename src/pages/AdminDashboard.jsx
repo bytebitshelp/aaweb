@@ -240,7 +240,7 @@ const AdminDashboard = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Total Revenue</p>
-                  <p className="text-2xl font-bold text-gray-900">${stats.totalRevenue.toFixed(2)}</p>
+                  <p className="text-2xl font-bold text-gray-900">₹{stats.totalRevenue.toFixed(2)}</p>
                 </div>
                 <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
                   <DollarSign className="w-6 h-6 text-green-600" />
@@ -328,13 +328,10 @@ const AdminDashboard = () => {
                             <div className="text-sm font-medium text-gray-900">
                               {order.artworks?.title || 'N/A'}
                             </div>
-                            <div className="text-sm text-gray-500">
-                              by {order.artworks?.artist_name || 'N/A'}
-                            </div>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          ${order.total_amount}
+                          ₹{order.total_amount}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
@@ -445,7 +442,7 @@ const AdminDashboard = () => {
                           {artwork.category}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          ${artwork.price}
+                          ₹{artwork.price}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {artwork.quantity_available}
