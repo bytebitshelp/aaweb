@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Supabase Connection Test</title>
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'
+        
+        const supabaseUrl = 'https://ibgztilnaecjexshxmrz.supabase.co'
+        const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliZ3p0aWxuYWVjamV4c2h4bXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc2ODEzMTIsImV4cCI6MjA3MzI1NzMxMn0.BXVkSNLdZb6y6SyzBGIcr7MiFDsjUwY9LU01dJwmGRo'
+        
+        console.log('Creating Supabase client...')
+        const supabase = createClient(supabaseUrl, supabaseAnonKey)
+        
+        async function testConnection() {
+            console.log('Testing connection...')
+            
+            try {
+                // Test 1: Select
+                console.log('Test 1: SELECT query...')
+                const { data: selectData, error: selectError } = await supabase
+                    .from('artworks')
+                    .select('count')
+                    .limit(1)
+                console.log('SELECT result:', selectData, selectError)
+                
+                // Test 2: Insert
+                console.log('Test 2: INSERT query...')
+                const testArtwork = {
+                    artist_name: 'Test Artist',
+                    title: 'Test Artwork HTML',
+                    category: 'giftable',
+                    description: 'Test description',
+                    price: 999,
+                    quantity_available: 1,
+                    is_original: false,
+                    status: 'available',
+                    image_url: 'test.jpg',
+                    created_at: new Date().toISOString()
+                }
+                
+                const { data: insertData, error: insertError } = await supabase
+                    .from('artworks')
+                    .insert([testArtwork])
+                    .select()
+                console.log('INSERT result:', insertData, insertError)
+                
+                if (insertError) {
+                    document.getElementById('result').innerHTML = `
+                        <h2 style="color: red">INSERT FAILED</h2>
+                        <p>Error: ${insertError.message}</p>
+                        <p>Code: ${insertError.code}</p>
+                        <p>Details: ${JSON.stringify(insertError, null, 2)}</p>
+                    `
+                } else {
+                    document.getElementById('result').innerHTML = `
+                        <h2 style="color: green">SUCCESS!</h2>
+                        <p>Inserted ID: ${insertData[0].artwork_id}</p>
+                    `
+                }
+                
+            } catch (err) {
+                console.error('Test failed:', err)
+                document.getElementById('result').innerHTML = `
+                    <h2 style="color: red">TEST FAILED</h2>
+                    <p>Error: ${err.message}</p>
+                `
+            }
+        }
+        
+        testConnection()
+    </script>
+</head>
+<body>
+    <h1>Supabase Connection Test</h1>
+    <div id="result">Testing...</div>
+</body>
+</html>
+

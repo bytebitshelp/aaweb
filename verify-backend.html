@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Supabase Connection Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-result {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 4px solid;
+        }
+        .pass {
+            background: #d4edda;
+            border-color: #28a745;
+        }
+        .fail {
+            background: #f8d7da;
+            border-color: #dc3545;
+        }
+        .loading {
+            background: #fff3cd;
+            border-color: #ffc107;
+        }
+        button {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Supabase Backend Verification</h1>
+    <button onclick="runTests()">Run Connection Tests</button>
+    <div id="results"></div>
+
+    <script>
+        // Your Supabase credentials
+        const SUPABASE_URL = 'https://ibgztilnaecjexshxmrz.supabase.co'
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliZ3p0aWxuYWVjamV4c2h4bXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc2ODEzMTIsImV4cCI6MjA3MzI1NzMxMn0.BXVkSNLdZb6y6SyzBGIcr7MiFDsjUwY9LU01dJwmGRo'
+        
+        const supabase = supabaseLib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+        async function runTests() {
+            const resultsDiv = document.getElementById('results')
+            resultsDiv.innerHTML = '<div class="test-result loading">Running tests...</div>'
+            
+            const tests = []
+            
+            // Test 1: Basic connection
+            try {
+                const { data, error } = await supabase.from('users').select('count').limit(1)
+                tests.push({
+                    name: 'Users Table Connection',
+                    pass: !error,
+                    details: error ? error.message : 'Connected successfully',
+                    data: data
+                })
+            } catch (err) {
+                tests.push({
+                    name: 'Users Table Connection',
+                    pass: false,
+                    details: err.message
+                })
+            }
+
+            // Test 2: Orders table
+            try {
+                const { data, error } = await supabase.from('orders').select('count').limit(1)
+                tests.push({
+                    name: 'Orders Table Connection',
+                    pass: !error,
+                    details: error ? error.message : 'Connected successfully',
+                    data: data
+                })
+            } catch (err) {
+                tests.push({
+                    name: 'Orders Table Connection',
+                    pass: false,
+                    details: err.message
+                })
+            }
+
+            // Test 3: Artworks table
+            try {
+                const { data, error } = await supabase.from('artworks').select('count').limit(1)
+                tests.push({
+                    name: 'Artworks Table Connection',
+                    pass: !error,
+                    details: error ? error.message : 'Connected successfully',
+                    data: data
+                })
+            } catch (err) {
+                tests.push({
+                    name: 'Artworks Table Connection',
+                    pass: false,
+                    details: err.message
+                })
+            }
+
+            // Display results
+            let html = ''
+            tests.forEach(test => {
+                html += `
+                    <div class="test-result ${test.pass ? 'pass' : 'fail'}">
+                        <h3>${test.name} ${test.pass ? '✅' : '❌'}</h3>
+                        <p><strong>Status:</strong> ${test.pass ? 'PASS' : 'FAIL'}</p>
+                        <p><strong>Details:</strong> ${test.details}</p>
+                        ${test.data ? `<pre>${JSON.stringify(test.data, null, 2)}</pre>` : ''}
+                    </div>
+                `
+            })
+            
+            resultsDiv.innerHTML = html
+        }
+
+        // Auto-run on page load
+        window.onload = runTests
+    </script>
+</body>
+</html>
+

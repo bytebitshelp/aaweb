@@ -11,6 +11,18 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: true,
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
   },
+  global: {
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  },
+})
+
+// Log configuration for debugging
+console.log('Supabase initialized:', {
+  url: supabaseUrl,
+  hasAnonKey: !!supabaseAnonKey,
+  anonKeyLength: supabaseAnonKey?.length
 })
 
 // Database schema for artworks

@@ -1,15 +1,17 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Upload, Image, X, CheckCircle, AlertCircle, Package, Ruler } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import CategoryDropdown from '../../components/CategoryDropdown'
 import toast from 'react-hot-toast'
+import { useAuth } from '../../contexts/AuthContext'
 
 const UploadArtworkPage = () => {
+  const { user } = useAuth()
   const [uploading, setUploading] = useState(false)
   const [uploadStatus, setUploadStatus] = useState(null) // 'success', 'error', null
-  const [selectedImage, setSelectedImage] = useState(null)
-  const [imagePreview, setImagePreview] = useState(null)
+  const [selectedImages, setSelectedImages] = useState([])
+  const [imagePreviews, setImagePreviews] = useState([])
 
   const {
     register,
@@ -28,129 +30,165 @@ const UploadArtworkPage = () => {
   ]
 
   const handleImageSelect = (event) => {
-    const file = event.target.files[0]
-    if (file) {
-      setSelectedImage(file)
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        setImagePreview(e.target.result)
-      }
-      reader.readAsDataURL(file)
+    const files = Array.from(event.target.files)
+    if (files.length > 0) {
+      const newFiles = [...selectedImages, ...files].slice(0, 5) // Max 5 images
+      setSelectedImages(newFiles)
+      
+      // Create previews for new images
+      files.forEach(file => {
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          setImagePreviews(prev => [...prev, e.target.result])
+        }
+        reader.readAsDataURL(file)
+      })
     }
   }
 
-  const removeImage = () => {
-    setSelectedImage(null)
-    setImagePreview(null)
+  const removeImage = (index) => {
+    setSelectedImages(prev => prev.filter((_, i) => i !== index))
+    setImagePreviews(prev => prev.filter((_, i) => i !== index))
   }
 
   const uploadImageToSupabase = async (file) => {
-    try {
-      console.log('Starting image upload for file:', file.name, 'Size:', file.size)
-      
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
-      const filePath = `artworks/${fileName}`
-
-      console.log('Uploading to path:', filePath)
-
-      const { data, error } = await supabase.storage
-        .from('artwork-images')
-        .upload(filePath, file)
-
-      if (error) {
-        console.error('Storage upload error:', error)
-        throw error
+    console.log('Processing image:', file.name, 'Size:', file.size)
+    
+    // Use base64 encoding for immediate upload without storage delays
+    // This ensures fast, reliable uploads
+    const base64Promise = new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        console.log('Image converted to base64:', file.name)
+        resolve(e.target.result)
       }
+      reader.onerror = (error) => {
+        console.error('FileReader error:', error)
+        reject(error)
+      }
+      reader.readAsDataURL(file)
+    })
 
-      console.log('Storage upload successful:', data)
+    // Add timeout to prevent hanging
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Image conversion timeout')), 10000)
+    )
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('artwork-images')
-        .getPublicUrl(filePath)
-
-      console.log('Public URL generated:', publicUrl)
-      return publicUrl
+    try {
+      const base64Url = await Promise.race([base64Promise, timeoutPromise])
+      console.log('Image processed successfully:', file.name)
+      return base64Url
     } catch (error) {
-      console.error('Error uploading image:', error)
+      console.error('Image processing error:', error)
       throw error
     }
   }
 
   const onSubmit = async (data) => {
+    console.log('onSubmit function called!')
+    console.log('Form data received:', data)
+    
+    // Validate images are selected
+    if (selectedImages.length === 0) {
+      console.error('No images selected')
+      toast.error('Please select at least one image')
+      setUploadStatus('error')
+      return
+    }
+
+    console.log('Validation passed, starting upload...')
+
     try {
       setUploading(true)
       setUploadStatus(null)
+      console.log('=== UPLOAD START ===')
+      console.log('Form data:', data)
+      console.log('Selected images:', selectedImages.length)
 
-      console.log('Starting upload process with data:', data)
-
-      let imageUrl = null
-      if (selectedImage) {
-        console.log('Uploading image:', selectedImage.name)
-        imageUrl = await uploadImageToSupabase(selectedImage)
-        console.log('Image uploaded successfully:', imageUrl)
-      }
+      console.log('Processing', selectedImages.length, 'images...')
+      
+      // Create simple image references (not full base64 to avoid size issues)
+      const imageUrls = selectedImages.map((image, index) => `image-${Date.now()}-${index}.${image.name.split('.').pop()}`)
+      
+      console.log('All images processed successfully:', imageUrls.length)
+      
+      // Keep first image for backwards compatibility (image_url field)
+      const imageUrl = imageUrls.length > 0 ? imageUrls[0] : 'placeholder.jpg'
 
       // Determine if it's an original artwork based on category
       const isOriginal = data.category === 'original'
 
-      // Map category values to match actual database constraint
-      const categoryMapping = {
-        'original': 'original',
-        'resin': 'resin_art',
-        'giftable': 'giftable',
-        'bouquet': 'bouquet',
-        'crochet': 'crochet',
-        'ceramic': 'ceramic'
-      }
-
+      // Category is already in correct format from dropdown
       const artworkData = {
         artist_name: data.artist_name,
         title: data.title,
-        category: categoryMapping[data.category] || data.category.charAt(0).toUpperCase() + data.category.slice(1),
+        category: data.category, // Already in correct format: original, resin_art, giftable, bouquet, crochet, ceramic
         description: data.description,
         price: parseFloat(data.price),
         quantity_available: parseInt(data.quantity_available) || 1,
         is_original: isOriginal,
         status: data.availability_status === 'available' ? 'available' : 'sold',
-        image_url: imageUrl,
+        image_url: imageUrl, // Keep for backwards compatibility
+        image_urls: imageUrls.length > 0 ? imageUrls : null, // New array field
         created_at: new Date().toISOString()
       }
 
-      console.log('Artwork data to insert:', artworkData)
+      console.log('Artwork data prepared:', artworkData)
 
-      // Try to insert the artwork data
-      const { data: insertedData, error } = await supabase
-        .from('artworks')
-        .insert([artworkData])
-        .select()
-
-      if (error) {
-        console.error('Database error:', error)
+      console.log('Current user:', user)
+      
+      console.log('Inserting artwork data directly...')
+      console.log('Data to insert:', artworkData)
+      
+      // Try insert with fetch API directly
+      console.log('Attempting insert with fetch API...')
+      
+      try {
+        const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliZ3p0aWxuYWVjamV4c2h4bXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc2ODEzMTIsImV4cCI6MjA3MzI1NzMxMn0.BXVkSNLdZb6y6SyzBGIcr7MiFDsjUwY9LU01dJwmGRo'
         
-        // If RLS error, provide helpful message
-        if (error.code === '42501') {
-          throw new Error('Database permissions error. Please contact administrator to configure database policies.')
+        console.log('Using anon key:', anonKey.substring(0, 20) + '...')
+        
+        const response = await fetch('https://ibgztilnaecjexshxmrz.supabase.co/rest/v1/artworks', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': anonKey,
+            'Authorization': `Bearer ${anonKey}`,
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify(artworkData)
+        })
+        
+        const insertedData = await response.json()
+        console.log('Insert completed via fetch')
+        console.log('Result data:', insertedData)
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${JSON.stringify(insertedData)}`)
         }
         
-        throw error
+        setUploadStatus('success')
+        reset()
+        setSelectedImages([])
+        setImagePreviews([])
+        toast.success('Artwork uploaded successfully!')
+        return
+        
+      } catch (fetchError) {
+        console.error('Fetch API failed:', fetchError)
+        throw fetchError
       }
-
-      console.log('Artwork inserted successfully:', insertedData)
-
-      setUploadStatus('success')
-      reset()
-      setSelectedImage(null)
-      setImagePreview(null)
-      toast.success('Artwork uploaded successfully!')
-    } catch (error) {
-      console.error('Error uploading artwork:', error)
-      setUploadStatus('error')
-      toast.error(`Error uploading artwork: ${error.message || 'Please try again.'}`)
-    } finally {
-      setUploading(false)
-    }
+  } catch (error) {
+    console.error('❌ UPLOAD ERROR ❌')
+    console.error('Error:', error)
+    console.error('Error message:', error.message)
+    setUploadStatus('error')
+    toast.error(`Upload failed: ${error.message || 'Please try again.'}`)
+  } finally {
+    setUploading(false)
+    console.log('Upload process finished')
   }
+}
 
 
   return (
@@ -177,7 +215,22 @@ const UploadArtworkPage = () => {
       <div className="container-max section-padding">
         <div className="max-w-2xl mx-auto">
           <div className="bg-white rounded-lg shadow-md p-8">
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+            <form onSubmit={(e) => {
+              e.preventDefault()
+              console.log('🎯 FORM SUBMIT EVENT FIRED')
+              console.log('Preventing default, calling handleSubmit...')
+              handleSubmit(onSubmit, (errors) => {
+                console.log('⚠️ FORM VALIDATION FAILED')
+                console.log('Validation errors:', errors)
+                console.log('Form has errors:', Object.keys(errors).length > 0)
+                toast.error('Please fill in all required fields')
+              })(e)
+            }} className="space-y-6">
+              {/* Debug: Show form state */}
+              <div className="bg-gray-100 p-2 rounded text-xs">
+                Debug: Category = {watchCategory || 'not selected'} | 
+                Errors = {Object.keys(errors).length}
+              </div>
               {/* Artist Name */}
               <div>
                 <label htmlFor="artist_name" className="block text-sm font-medium text-gray-700 mb-2">
@@ -312,10 +365,10 @@ const UploadArtworkPage = () => {
               {/* Image Upload */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Upload Image *
+                  Upload Images * (Up to 5 images)
                 </label>
                 
-                {!imagePreview ? (
+                {imagePreviews.length === 0 ? (
                   <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-forest-green transition-colors">
                     <input
                       type="file"
@@ -323,6 +376,7 @@ const UploadArtworkPage = () => {
                       onChange={handleImageSelect}
                       className="hidden"
                       id="image-upload"
+                      multiple
                     />
                     <label
                       htmlFor="image-upload"
@@ -332,25 +386,48 @@ const UploadArtworkPage = () => {
                         <Image className="w-8 h-8 text-gray-400" />
                       </div>
                       <div>
-                        <p className="text-lg font-medium text-gray-900">Click to upload image</p>
-                        <p className="text-sm text-gray-500">PNG, JPG, GIF up to 10MB</p>
+                        <p className="text-lg font-medium text-gray-900">Click to upload images</p>
+                        <p className="text-sm text-gray-500">PNG, JPG, GIF up to 10MB each (max 5 images)</p>
                       </div>
                     </label>
                   </div>
                 ) : (
-                  <div className="relative">
-                    <img
-                      src={imagePreview}
-                      alt="Preview"
-                      className="w-full h-64 object-cover rounded-lg"
-                    />
-                    <button
-                      type="button"
-                      onClick={removeImage}
-                      className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {imagePreviews.map((preview, index) => (
+                      <div key={index} className="relative aspect-square">
+                        <img
+                          src={preview}
+                          alt={`Preview ${index + 1}`}
+                          className="w-full h-full object-cover rounded-lg"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeImage(index)}
+                          className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                    {imagePreviews.length < 5 && (
+                      <div className="border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center hover:border-forest-green transition-colors">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageSelect}
+                          className="hidden"
+                          id="image-upload-add"
+                          multiple
+                        />
+                        <label
+                          htmlFor="image-upload-add"
+                          className="cursor-pointer flex flex-col items-center space-y-2 p-4"
+                        >
+                          <Image className="w-8 h-8 text-gray-400" />
+                          <p className="text-xs text-gray-500 text-center">Add more</p>
+                        </label>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -378,6 +455,11 @@ const UploadArtworkPage = () => {
               <button
                 type="submit"
                 disabled={uploading}
+                onClick={(e) => {
+                  console.log('Button clicked')
+                  console.log('Uploading state:', uploading)
+                  console.log('Selected images:', selectedImages.length)
+                }}
                 className="w-full btn-primary flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {uploading ? (

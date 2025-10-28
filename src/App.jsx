@@ -22,6 +22,7 @@ import AuthCallback from './pages/AuthCallback'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import LoginPage from './pages/LoginPage'
+import TestConnection from './pages/TestConnection'
 
 function App() {
   return (
@@ -32,6 +33,7 @@ function App() {
             <Routes>
               {/* Public routes */}
               <Route path="/" element={<LandingPage />} />
+              <Route path="/test-connection" element={<TestConnection />} />
               <Route path="/shop" element={<ShopPage />} />
               <Route path="/originals" element={<OriginalsPage />} />
               <Route path="/resin-art" element={<ResinArtPage />} />

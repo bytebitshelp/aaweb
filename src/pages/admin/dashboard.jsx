@@ -32,7 +32,7 @@ const AdminDashboard = () => {
   const [orders, setOrders] = useState([])
   const [artworks, setArtworks] = useState([])
   const [users, setUsers] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [stats, setStats] = useState({
     totalOrders: 0,
@@ -44,6 +44,11 @@ const AdminDashboard = () => {
   })
 
   useEffect(() => {
+    console.log('=== ADMIN DASHBOARD MOUNTED ===')
+    console.log('User profile:', userProfile)
+    console.log('Starting to fetch data...')
+    
+    // Always try to fetch data
     fetchDashboardData()
   }, [])
 
@@ -95,88 +100,179 @@ const AdminDashboard = () => {
 
 
   const fetchDashboardData = async () => {
+    console.log('fetchDashboardData called')
+    
     try {
-      setLoading(true)
-      await Promise.all([
-        fetchOrders(),
-        fetchArtworks(),
-        fetchUsers(),
-        fetchStats()
-      ])
+      console.log('Fetching data one at a time to identify issues...')
+      
+      // Fetch data sequentially to see which one fails
+      console.log('1. Fetching stats...')
+      await fetchStats()
+      
+      console.log('2. Fetching orders...')
+      await fetchOrders()
+      
+      console.log('3. Fetching artworks...')
+      await fetchArtworks()
+      
+      console.log('4. Fetching users...')
+      await fetchUsers()
+      
+      console.log('All data fetched successfully')
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
       toast.error('Failed to load dashboard data')
-    } finally {
-      setLoading(false)
     }
   }
 
   const fetchOrders = async () => {
-    const { data, error } = await supabase
-      .from('orders')
-      .select(`
-        *,
-        users!inner(name, email),
-        artworks!inner(title, artist_name, price)
-      `)
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      console.error('Error fetching orders:', error)
-      return
+    try {
+      console.log('Starting fetchOrders...')
+      console.log('Supabase URL:', import.meta.env.VITE_SUPABASE_URL)
+      console.log('Testing simple query...')
+      
+      // Try the simplest possible query first
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .limit(5)
+      
+      console.log('Orders query result:', { 
+        hasData: !!data, 
+        dataLength: data?.length,
+        error: error?.message || 'None',
+        errorCode: error?.code,
+        errorDetails: error?.details
+      })
+      
+      if (error) {
+        console.error('Error fetching orders:', error)
+        console.error('Full error object:', JSON.stringify(error, null, 2))
+        toast.error(`Failed to load orders: ${error.message || error.code || 'Unknown error'}`)
+        setOrders([]) // Set empty array on error
+        return
+      }
+      
+      console.log('Orders fetched successfully:', data?.length || 0)
+      setOrders(data || [])
+    } catch (err) {
+      console.error('fetchOrders exception:', err)
+      toast.error(`Failed to load orders: ${err.message}`)
+      setOrders([])
     }
-    setOrders(data || [])
   }
 
   const fetchArtworks = async () => {
-    const { data, error } = await supabase
-      .from('artworks')
-      .select('*')
-      .order('created_at', { ascending: false })
+    try {
+      console.log('Starting fetchArtworks...')
+      const { data, error } = await supabase
+        .from('artworks')
+        .select('*')
+        .limit(50)
 
-    if (error) {
-      console.error('Error fetching artworks:', error)
-      return
+      console.log('Artworks query result:', { 
+        hasData: !!data, 
+        dataLength: data?.length,
+        error: error?.message || 'None'
+      })
+      
+      if (error) {
+        console.error('Error fetching artworks:', error)
+        console.error('Error details:', JSON.stringify(error, null, 2))
+        setArtworks([])
+        return
+      }
+      
+      console.log('Artworks fetched:', data?.length || 0)
+      setArtworks(data || [])
+    } catch (err) {
+      console.error('fetchArtworks exception:', err)
+      setArtworks([])
     }
-    setArtworks(data || [])
   }
 
   const fetchUsers = async () => {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .order('created_at', { ascending: false })
+    try {
+      console.log('Starting fetchUsers...')
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .limit(30)
 
-    if (error) {
-      console.error('Error fetching users:', error)
-      return
+      console.log('Users query result:', { 
+        hasData: !!data, 
+        dataLength: data?.length,
+        error: error?.message || 'None'
+      })
+      
+      if (error) {
+        console.error('Error fetching users:', error)
+        console.error('Error details:', JSON.stringify(error, null, 2))
+        setUsers([])
+        return
+      }
+      
+      console.log('Users fetched:', data?.length || 0)
+      setUsers(data || [])
+    } catch (err) {
+      console.error('fetchUsers exception:', err)
+      setUsers([])
     }
-    setUsers(data || [])
   }
 
   const fetchStats = async () => {
-    const [ordersResult, artworksResult, usersResult] = await Promise.all([
-      supabase.from('orders').select('payment_status, total_amount'),
-      supabase.from('artworks').select('artwork_id'),
-      supabase.from('users').select('user_id')
-    ])
+    try {
+      console.log('Starting fetchStats...')
+      // Simplified stats fetch
+      const [ordersResult, artworksResult, usersResult] = await Promise.all([
+        supabase.from('orders').select('*').limit(1000),
+        supabase.from('artworks').select('*').limit(1000),
+        supabase.from('users').select('*').limit(1000)
+      ])
 
-    const ordersData = ordersResult.data || []
-    const totalRevenue = ordersData
-      .filter(order => order.payment_status === 'Paid')
-      .reduce((sum, order) => sum + (order.total_amount || 0), 0)
+      console.log('Stats query results:', {
+        ordersError: ordersResult.error?.message || 'None',
+        artworksError: artworksResult.error?.message || 'None',
+        usersError: usersResult.error?.message || 'None',
+        ordersCount: ordersResult.data?.length || 0,
+        artworksCount: artworksResult.data?.length || 0,
+        usersCount: usersResult.data?.length || 0
+      })
 
-    const pendingOrders = ordersData.filter(order => order.payment_status === 'Pending').length
-    const paidOrders = ordersData.filter(order => order.payment_status === 'Paid').length
+      const ordersData = ordersResult.data || []
+      const totalRevenue = ordersData
+        .filter(order => order.payment_status === 'Paid' || order.payment_status === 'paid')
+        .reduce((sum, order) => sum + (order.total_amount || 0), 0)
 
-    setStats({
-      totalOrders: ordersData.length,
-      totalRevenue,
-      totalArtworks: artworksResult.data?.length || 0,
-      totalUsers: usersResult.data?.length || 0,
-      pendingOrders,
-      paidOrders
-    })
+      const pendingOrders = ordersData.filter(order => 
+        order.order_status === 'Pending' || order.order_status === 'pending'
+      ).length
+      const paidOrders = ordersData.filter(order => 
+        order.payment_status === 'Paid' || order.payment_status === 'paid'
+      ).length
+
+      setStats({
+        totalOrders: ordersData.length,
+        totalRevenue,
+        totalArtworks: artworksResult.data?.length || 0,
+        totalUsers: usersResult.data?.length || 0,
+        pendingOrders,
+        paidOrders
+      })
+      
+      console.log('Stats loaded successfully')
+    } catch (err) {
+      console.error('fetchStats exception:', err)
+      // Set default stats on error
+      setStats({
+        totalOrders: 0,
+        totalRevenue: 0,
+        totalArtworks: 0,
+        totalUsers: 0,
+        pendingOrders: 0,
+        paidOrders: 0
+      })
+    }
   }
 
   const markOrderAsDispatched = async (orderId) => {
@@ -241,14 +337,6 @@ const AdminDashboard = () => {
     { id: 'users', label: 'User Overview', icon: Users },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 }
   ]
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-12 h-12 rounded-full border-4 border-gray-200 border-t-forest-green animate-spin" />
-      </div>
-    )
-  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -517,20 +605,20 @@ const AdminDashboard = () => {
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div>
                             <div className="text-sm font-medium text-gray-900">
-                              {order.users?.name || 'N/A'}
+                              Customer
                             </div>
                             <div className="text-sm text-gray-500">
-                              {order.users?.email || 'N/A'}
+                              Order ID: {order.order_id?.slice(0, 12) || 'N/A'}
                             </div>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div>
                             <div className="text-sm font-medium text-gray-900">
-                              {order.artworks?.title || 'N/A'}
+                              Order #{order.order_id?.slice(0, 8) || 'N/A'}
                             </div>
                             <div className="text-sm text-gray-500">
-                              by {order.artworks?.artist_name || 'N/A'}
+                              {new Date(order.created_at).toLocaleDateString()}
                             </div>
                           </div>
                         </td>
@@ -624,7 +712,13 @@ const AdminDashboard = () => {
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
                             <div className="w-12 h-12 bg-gray-200 rounded-lg mr-4 flex items-center justify-center">
-                              {artwork.image_url ? (
+                              {artwork.image_urls && artwork.image_urls.length > 0 ? (
+                                <img 
+                                  src={artwork.image_urls[0]} 
+                                  alt={artwork.title}
+                                  className="w-full h-full object-cover rounded-lg"
+                                />
+                              ) : artwork.image_url ? (
                                 <img 
                                   src={artwork.image_url} 
                                   alt={artwork.title}
@@ -636,6 +730,11 @@ const AdminDashboard = () => {
                             </div>
                             <div>
                               <div className="text-sm font-medium text-gray-900">{artwork.title}</div>
+                              <div className="text-xs text-gray-500">
+                                {(artwork.image_urls?.length || 0) > 0 
+                                  ? `${artwork.image_urls.length} images` 
+                                  : '1 image'}
+                              </div>
                             </div>
                           </div>
                         </td>

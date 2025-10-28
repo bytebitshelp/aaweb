@@ -4,6 +4,7 @@ import { useCartStore } from '../store/cartStore'
 import { useWishlistStore } from '../store/wishlistStore'
 import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
+import ImageCarousel from './ImageCarousel'
 
 const ArtworkCard = ({ artwork, onView }) => {
   const [imageLoaded, setImageLoaded] = useState(false)
@@ -58,22 +59,29 @@ const ArtworkCard = ({ artwork, onView }) => {
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Image Container */}
-      <div className="relative aspect-square overflow-hidden bg-gray-100">
+      {/* Image Container with Carousel */}
+      <div className="relative aspect-square overflow-hidden bg-gray-100 group">
         {!imageLoaded && (
           <div className="absolute inset-0 bg-gray-200 animate-pulse flex items-center justify-center">
             <div className="w-8 h-8 border-2 border-gray-300 border-t-forest-green rounded-full animate-spin"></div>
           </div>
         )}
-        <img
-          src={artwork.image_url || '/placeholder-art.jpg'}
-          alt={`${artwork.title} by ${artwork.artist_name}`}
-          className={`w-full h-full object-cover transition-all duration-300 ${
-            imageLoaded ? 'opacity-100' : 'opacity-0'
-          } ${isHovered ? 'scale-105' : 'scale-100'}`}
-          onLoad={handleImageLoad}
-          loading="lazy"
-        />
+        {artwork.image_urls && artwork.image_urls.length > 0 ? (
+          <ImageCarousel 
+            images={artwork.image_urls} 
+            alt={`${artwork.title} by ${artwork.artist_name}`}
+          />
+        ) : (
+          <img
+            src={artwork.image_url || '/placeholder-art.jpg'}
+            alt={`${artwork.title} by ${artwork.artist_name}`}
+            className={`w-full h-full object-cover transition-all duration-300 ${
+              imageLoaded ? 'opacity-100' : 'opacity-0'
+            } ${isHovered ? 'scale-105' : 'scale-100'}`}
+            onLoad={handleImageLoad}
+            loading="lazy"
+          />
+        )}
         
         {/* Status Badge */}
         <div className="absolute top-3 right-3">
