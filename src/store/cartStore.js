@@ -14,6 +14,7 @@ export const useCartStore = create(
       setUser: (user) => {
         set({ user })
         if (user) {
+          // Fetch cart items from database when user logs in
           get().fetchCartItems()
         } else {
           set({ items: [] })
@@ -28,71 +29,123 @@ export const useCartStore = create(
           return
         }
 
+        // Validate artwork
+        if (!artwork || !artwork.artwork_id) {
+          toast.error('Invalid artwork')
+          return
+        }
+
+        // Check availability
+        const isAvailable = (artwork.status === 'Available' || artwork.status === 'available') && (artwork.quantity_available || 0) > 0
+        if (!isAvailable) {
+          toast.error('This item is currently not available')
+          return
+        }
+
         try {
           const existingItem = get().items.find(item => item.artwork_id === artwork.artwork_id)
           
           if (existingItem) {
             // Update quantity
-            const newQuantity = existingItem.quantity + quantity
-            if (newQuantity > artwork.quantity_available) {
-              toast.error('Not enough quantity available')
+            const newQuantity = Math.min(existingItem.quantity + quantity, artwork.quantity_available || 0)
+            
+            if (newQuantity > (artwork.quantity_available || 0)) {
+              toast.error(`Only ${artwork.quantity_available} items available`)
               return
             }
 
-            await supabase
+            const { error: updateError } = await supabase
               .from('cart')
               .update({ quantity: newQuantity })
               .eq('cart_id', existingItem.cart_id)
+              .eq('user_id', user.id)
 
-            set(state => ({
-              items: state.items.map(item =>
-                item.artwork_id === artwork.artwork_id
-                  ? { ...item, quantity: newQuantity }
-                  : item
-              )
-            }))
+            if (updateError) throw updateError
+
+            // Refresh cart from database to ensure consistency
+            await get().fetchCartItems()
 
             toast.success('Cart updated successfully!')
           } else {
-            // Add new item
+            // Add new item - handle unique constraint if item already exists
             const { data, error } = await supabase
               .from('cart')
               .insert([
                 {
                   user_id: user.id,
                   artwork_id: artwork.artwork_id,
-                  quantity,
+                  quantity: Math.min(quantity, artwork.quantity_available || 0),
                   created_at: new Date().toISOString()
                 }
               ])
               .select()
               .single()
 
-            if (error) throw error
+            if (error) {
+              // Handle unique constraint violation (item already in cart)
+              if (error.code === '23505') {
+                // Fetch existing cart item and update quantity
+                const { data: existingCartItem } = await supabase
+                  .from('cart')
+                  .select('*')
+                  .eq('user_id', user.id)
+                  .eq('artwork_id', artwork.artwork_id)
+                  .single()
 
-            set(state => ({
-              items: [...state.items, { ...artwork, cart_id: data.cart_id, quantity }]
-            }))
+                if (existingCartItem) {
+                  const updatedQuantity = Math.min(existingCartItem.quantity + quantity, artwork.quantity_available || 0)
+                  await supabase
+                    .from('cart')
+                    .update({ quantity: updatedQuantity })
+                    .eq('cart_id', existingCartItem.cart_id)
+                  
+                  await get().fetchCartItems()
+                  toast.success('Item quantity updated in cart!')
+                  return
+                }
+              }
+              throw error
+            }
+
+            // Refresh cart from database
+            await get().fetchCartItems()
 
             toast.success('Item added to cart!')
           }
         } catch (error) {
           console.error('Error adding to cart:', error)
-          toast.error('Failed to add item to cart')
+          const errorMessage = error.message || 'Failed to add item to cart'
+          
+          if (errorMessage.includes('exceeds available') || errorMessage.includes('quantity')) {
+            toast.error('Not enough quantity available')
+          } else if (errorMessage.includes('not available')) {
+            toast.error('This item is no longer available')
+            await get().fetchCartItems() // Refresh to remove invalid items
+          } else {
+            toast.error(errorMessage)
+          }
         }
       },
 
       // Remove item from cart
       removeItem: async (cartId) => {
+        const { user } = get()
+        if (!user) {
+          toast.error('Please login to modify cart')
+          return
+        }
+
         try {
-          await supabase
+          const { error } = await supabase
             .from('cart')
             .delete()
             .eq('cart_id', cartId)
+            .eq('user_id', user.id)
 
-          set(state => ({
-            items: state.items.filter(item => item.cart_id !== cartId)
-          }))
+          if (error) throw error
+
+          // Refresh cart from database
+          await get().fetchCartItems()
 
           toast.success('Item removed from cart!')
         } catch (error) {
@@ -103,22 +156,49 @@ export const useCartStore = create(
 
       // Update item quantity
       updateQuantity: async (cartId, quantity) => {
+        const { user } = get()
+        if (!user) {
+          toast.error('Please login to update cart')
+          return
+        }
+
+        if (quantity <= 0) {
+          // If quantity is 0 or less, remove item
+          await get().removeItem(cartId)
+          return
+        }
+
         try {
-          await supabase
+          // Get current cart item to check artwork availability
+          const cartItem = get().items.find(item => item.cart_id === cartId)
+          if (!cartItem) {
+            toast.error('Item not found in cart')
+            return
+          }
+
+          // Validate quantity against available stock
+          if (quantity > (cartItem.quantity_available || 0)) {
+            toast.error(`Only ${cartItem.quantity_available} items available`)
+            return
+          }
+
+          const { error } = await supabase
             .from('cart')
             .update({ quantity })
             .eq('cart_id', cartId)
+            .eq('user_id', user.id)
 
-          set(state => ({
-            items: state.items.map(item =>
-              item.cart_id === cartId
-                ? { ...item, quantity }
-                : item
-            )
-          }))
+          if (error) throw error
+
+          // Refresh cart from database to ensure consistency
+          await get().fetchCartItems()
+
+          toast.success('Quantity updated')
         } catch (error) {
           console.error('Error updating quantity:', error)
           toast.error('Failed to update quantity')
+          // Refresh cart to sync with database
+          await get().fetchCartItems()
         }
       },
 
@@ -148,6 +228,15 @@ export const useCartStore = create(
 
         try {
           set({ loading: true })
+          
+          // Try to clean up invalid cart items first (if function exists)
+          try {
+            await supabase.rpc('remove_unavailable_cart_items')
+          } catch (cleanupError) {
+            // Function might not exist, continue anyway
+            console.log('Cleanup function not available, skipping...')
+          }
+          
           const { data, error } = await supabase
             .from('cart')
             .select(`
@@ -158,24 +247,46 @@ export const useCartStore = create(
                 artist_name,
                 price,
                 image_url,
+                image_urls,
                 quantity_available,
-                status
+                status,
+                category
               )
             `)
             .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
 
           if (error) throw error
 
-          const items = data.map(cartItem => ({
-            ...cartItem.artworks,
-            cart_id: cartItem.cart_id,
-            quantity: cartItem.quantity
-          })).filter(item => item.status === 'Available')
+          // Process cart items - filter out unavailable and null items
+          const items = (data || [])
+            .map(cartItem => {
+              // Skip if artwork data is missing
+              if (!cartItem.artworks || !cartItem.artworks.artwork_id) {
+                return null
+              }
+              
+              const artwork = cartItem.artworks
+              const isAvailable = (artwork.status === 'Available' || artwork.status === 'available') && (artwork.quantity_available || 0) > 0
+              
+              // Return valid item with corrected quantity
+              return {
+                ...artwork,
+                cart_id: cartItem.cart_id,
+                quantity: Math.min(cartItem.quantity || 1, artwork.quantity_available || 0)
+              }
+            })
+            .filter(item => {
+              if (!item) return false
+              const isAvailable = (item.status === 'Available' || item.status === 'available') && (item.quantity_available || 0) > 0
+              return isAvailable && (item.quantity || 0) > 0
+            })
 
           set({ items, loading: false })
         } catch (error) {
           console.error('Error fetching cart items:', error)
-          set({ loading: false })
+          toast.error('Failed to load cart items')
+          set({ items: [], loading: false })
         }
       },
 
@@ -195,40 +306,71 @@ export const useCartStore = create(
 
       // Process checkout with Razorpay
       processCheckout: async () => {
-        const { items, getTotalPrice, user } = get()
+        const { items, getTotalPrice } = get()
+        const { user } = get()
         
-        if (!user) {
+        // Get current session to verify user is logged in
+        let currentUser = user
+        if (!currentUser) {
+          try {
+            const { data: { session } } = await supabase.auth.getSession()
+            currentUser = session?.user || null
+            
+            if (currentUser) {
+              // Update cart store with current user
+              set({ user: currentUser })
+            }
+          } catch (err) {
+            console.error('Error getting session:', err)
+          }
+        }
+        
+        if (!currentUser) {
           toast.error('Please login to proceed with checkout')
-          return { success: false }
+          return { success: false, error: 'User not authenticated' }
         }
         
         if (items.length === 0) {
           toast.error('Your cart is empty')
-          return { success: false }
+          return { success: false, error: 'Cart is empty' }
         }
         
         try {
           // Import processPayment dynamically to avoid circular dependency
           const { processPayment } = await import('../services/razorpay')
           
+          // Get user profile for payment details
+          const { data: userProfile } = await supabase
+            .from('users')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .single()
+          
           const orderData = {
             items,
             totalAmount: getTotalPrice()
           }
           
-          const result = await processPayment(orderData, user)
+          const userDetails = {
+            id: currentUser.id,
+            email: currentUser.email,
+            name: userProfile?.name || currentUser.user_metadata?.name || currentUser.email.split('@')[0],
+            phone: userProfile?.phone || ''
+          }
+          
+          const result = await processPayment(orderData, userDetails)
           
           if (result.success) {
             toast.success('Order placed successfully!')
             await get().clearCart()
-            return { success: true, paymentId: result.paymentId }
+            return { success: true, paymentId: result.paymentId, orderId: result.orderId }
           } else {
-            toast.error('Payment failed')
+            toast.error(result.error || 'Payment failed')
             return { success: false, error: result.error }
           }
         } catch (error) {
           console.error('Checkout error:', error)
-          toast.error('Checkout failed. Please try again.')
+          toast.error(error.message || 'Checkout failed. Please try again.')
           return { success: false, error: error.message }
         }
       }

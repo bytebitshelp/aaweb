@@ -165,29 +165,51 @@ const AdminDashboard = () => {
   const fetchArtworks = async () => {
     try {
       console.log('Starting fetchArtworks...')
+      setLoading(true)
       const { data, error } = await supabase
         .from('artworks')
         .select('*')
-        .limit(50)
+        .order('created_at', { ascending: false })
+        .limit(100)
 
       console.log('Artworks query result:', { 
         hasData: !!data, 
         dataLength: data?.length,
-        error: error?.message || 'None'
+        error: error?.message || 'None',
+        errorCode: error?.code,
+        errorDetails: error?.details
       })
       
       if (error) {
         console.error('Error fetching artworks:', error)
         console.error('Error details:', JSON.stringify(error, null, 2))
+        toast.error(`Failed to load artworks: ${error.message || error.code || 'Unknown error'}`)
         setArtworks([])
+        setLoading(false)
         return
       }
       
       console.log('Artworks fetched:', data?.length || 0)
-      setArtworks(data || [])
+      // Ensure image_urls is properly handled if it's a string
+      const processedData = (data || []).map(artwork => {
+        // Handle image_urls if it's stored as a string instead of array
+        if (artwork.image_urls && typeof artwork.image_urls === 'string') {
+          try {
+            artwork.image_urls = JSON.parse(artwork.image_urls)
+          } catch (e) {
+            // If parsing fails, treat as single image
+            artwork.image_urls = [artwork.image_urls]
+          }
+        }
+        return artwork
+      })
+      setArtworks(processedData)
+      setLoading(false)
     } catch (err) {
       console.error('fetchArtworks exception:', err)
+      toast.error(`Failed to load artworks: ${err.message}`)
       setArtworks([])
+      setLoading(false)
     }
   }
 
@@ -707,7 +729,20 @@ const AdminDashboard = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {artworks.map((artwork) => (
+                    {loading && artworks.length === 0 ? (
+                      <tr>
+                        <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
+                          Loading artworks...
+                        </td>
+                      </tr>
+                    ) : artworks.length === 0 ? (
+                      <tr>
+                        <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
+                          No artworks found. Click "Add Artwork" to create your first artwork.
+                        </td>
+                      </tr>
+                    ) : (
+                      artworks.map((artwork) => (
                       <tr key={artwork.artwork_id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
@@ -791,7 +826,8 @@ const AdminDashboard = () => {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>

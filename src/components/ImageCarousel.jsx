@@ -35,6 +35,9 @@ const ImageCarousel = ({ images, alt = 'Product image' }) => {
           src={displayImages[currentIndex] || '/placeholder-art.jpg'}
           alt={`${alt} ${currentIndex + 1}`}
           className="w-full h-full object-cover transition-all duration-300"
+          onError={(e) => {
+            e.target.src = '/placeholder-art.jpg'
+          }}
         />
 
         {/* Navigation Arrows */}

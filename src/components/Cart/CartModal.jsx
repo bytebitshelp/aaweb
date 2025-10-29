@@ -7,14 +7,14 @@ import toast from 'react-hot-toast'
 
 const CartModal = ({ isOpen, onClose }) => {
   const { items, updateQuantity, removeItem, getTotalPrice, getTotalItems, clearCart, processCheckout } = useCartStore()
-  const { userProfile } = useAuth()
+  const { user } = useAuth()
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (isOpen && userProfile) {
+    if (isOpen && user) {
       useCartStore.getState().fetchCartItems()
     }
-  }, [isOpen, userProfile])
+  }, [isOpen, user])
 
   const handleQuantityChange = async (cartId, newQuantity) => {
     if (newQuantity <= 0) {
@@ -25,11 +25,6 @@ const CartModal = ({ isOpen, onClose }) => {
   }
 
   const handleCheckout = async () => {
-    if (!userProfile) {
-      toast.error('Please login to proceed with checkout')
-      return
-    }
-
     if (items.length === 0) {
       toast.error('Your cart is empty')
       return
@@ -37,6 +32,7 @@ const CartModal = ({ isOpen, onClose }) => {
 
     try {
       setLoading(true)
+      // processCheckout handles user authentication internally
       const result = await processCheckout()
       
       if (result.success) {

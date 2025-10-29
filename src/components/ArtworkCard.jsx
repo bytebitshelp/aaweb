@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { Heart, ShoppingCart, Eye } from 'lucide-react'
+import { ShoppingCart, Eye } from 'lucide-react'
 import { useCartStore } from '../store/cartStore'
-import { useWishlistStore } from '../store/wishlistStore'
 import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
 import ImageCarousel from './ImageCarousel'
@@ -10,7 +9,6 @@ const ArtworkCard = ({ artwork, onView }) => {
   const [imageLoaded, setImageLoaded] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
   const { addItem } = useCartStore()
-  const { addItem: addToWishlist, isInWishlist, removeItem: removeFromWishlist } = useWishlistStore()
   const { user } = useAuth()
 
   const handleImageLoad = () => {
@@ -23,7 +21,7 @@ const ArtworkCard = ({ artwork, onView }) => {
       return
     }
 
-    if (artwork.status !== 'Available') {
+    if (!artwork.status || (artwork.status !== 'Available' && artwork.status !== 'available')) {
       toast.error('This artwork is not available')
       return
     }
@@ -36,28 +34,13 @@ const ArtworkCard = ({ artwork, onView }) => {
     await addItem(artwork, 1)
   }
 
-  const handleWishlistToggle = async () => {
-    if (!user) {
-      toast.error('Please login to manage wishlist')
-      return
-    }
-
-    if (isInWishlist(artwork.artwork_id)) {
-      // Find the wishlist item and remove it
-      const wishlistItem = useWishlistStore.getState().items.find(item => item.artwork_id === artwork.artwork_id)
-      if (wishlistItem) {
-        await removeFromWishlist(wishlistItem.wishlist_id)
-      }
-    } else {
-      await addToWishlist(artwork)
-    }
-  }
 
   return (
     <div
       className="bg-white rounded-lg shadow-md overflow-hidden card-hover group cursor-pointer"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onClick={() => onView(artwork)}
     >
       {/* Image Container with Carousel */}
       <div className="relative aspect-square overflow-hidden bg-gray-100 group">
@@ -79,6 +62,10 @@ const ArtworkCard = ({ artwork, onView }) => {
               imageLoaded ? 'opacity-100' : 'opacity-0'
             } ${isHovered ? 'scale-105' : 'scale-100'}`}
             onLoad={handleImageLoad}
+            onError={(e) => {
+              e.target.src = '/placeholder-art.jpg'
+              setImageLoaded(true)
+            }}
             loading="lazy"
           />
         )}
@@ -87,12 +74,12 @@ const ArtworkCard = ({ artwork, onView }) => {
         <div className="absolute top-3 right-3">
           <span
             className={`px-2 py-1 rounded-full text-xs font-medium ${
-              artwork.status === 'Available' && artwork.quantity_available > 0
+              (artwork.status === 'Available' || artwork.status === 'available') && artwork.quantity_available > 0
                 ? 'bg-green-100 text-green-800'
                 : 'bg-red-100 text-red-800'
             }`}
           >
-            {artwork.status === 'Available' && artwork.quantity_available > 0 ? 'Available' : 'Sold Out'}
+            {(artwork.status === 'Available' || artwork.status === 'available') && artwork.quantity_available > 0 ? 'Available' : 'Sold Out'}
           </span>
         </div>
 
@@ -116,18 +103,7 @@ const ArtworkCard = ({ artwork, onView }) => {
             >
               <Eye className="w-4 h-4 text-gray-700" />
             </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                handleWishlistToggle()
-              }}
-              className={`p-2 bg-white bg-opacity-90 rounded-full hover:bg-opacity-100 transition-all ${
-                isInWishlist(artwork.artwork_id) ? 'text-red-500' : 'text-gray-700'
-              }`}
-            >
-              <Heart className={`w-4 h-4 ${isInWishlist(artwork.artwork_id) ? 'fill-current' : ''}`} />
-            </button>
-            {artwork.status === 'Available' && artwork.quantity_available > 0 && (
+            {(artwork.status === 'Available' || artwork.status === 'available') && artwork.quantity_available > 0 && (
               <button
                 onClick={(e) => {
                   e.stopPropagation()
@@ -154,21 +130,50 @@ const ArtworkCard = ({ artwork, onView }) => {
           {artwork.description}
         </p>
         
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-3">
           <div>
             <span className="text-xl font-bold text-forest-green">
               ₹{artwork.price}
             </span>
-            {artwork.quantity_available > 0 && (
-              <p className="text-xs text-gray-500">
-                {artwork.quantity_available} available
-              </p>
-            )}
+            <p className="text-xs text-gray-500">
+              {artwork.quantity_available > 0 
+                ? `${artwork.quantity_available} available`
+                : 'Out of stock'
+              }
+            </p>
           </div>
           <span className="text-xs text-gray-500 capitalize">
-            {artwork.category.replace('_', ' ')}
+            {artwork.category?.replace('_', ' ') || artwork.category || 'Uncategorized'}
           </span>
         </div>
+
+        {/* Availability Status Button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            const isAvailable = (artwork.status === 'Available' || artwork.status === 'available') && artwork.quantity_available > 0
+            if (!user) {
+              toast.error('Please login to view details')
+              onView(artwork)
+            } else if (!isAvailable) {
+              toast.error('This item is currently out of stock')
+              onView(artwork)
+            } else {
+              onView(artwork)
+            }
+          }}
+          disabled={(artwork.status !== 'Available' && artwork.status !== 'available') || artwork.quantity_available <= 0}
+          className={`w-full py-2 px-4 rounded-lg font-medium transition-all ${
+            (artwork.status === 'Available' || artwork.status === 'available') && artwork.quantity_available > 0
+              ? 'bg-forest-green text-white hover:bg-forest-green-dark active:bg-forest-green-darker'
+              : 'bg-gray-300 text-gray-600 cursor-not-allowed opacity-60'
+          }`}
+        >
+          {(artwork.status === 'Available' || artwork.status === 'available') && artwork.quantity_available > 0
+            ? 'View Details'
+            : 'Out of Stock'
+          }
+        </button>
       </div>
     </div>
   )

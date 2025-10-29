@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Menu, X, ShoppingBag, Heart, User, Instagram, Facebook, Twitter, Mail, LogOut } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -12,6 +12,7 @@ import DebugAuth from './DebugAuth'
 
 const Layout = ({ children }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [isProfileOpen, setIsProfileOpen] = useState(false)
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [showCartModal, setShowCartModal] = useState(false)
   const location = useLocation()
@@ -19,6 +20,24 @@ const Layout = ({ children }) => {
   
   const { user, userProfile, signOut, isAdmin, loading } = useAuth()
   const { getTotalItems } = useCartStore()
+  const profileRef = useRef(null)
+
+  // Close profile dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (profileRef.current && !profileRef.current.contains(event.target)) {
+        setIsProfileOpen(false)
+      }
+    }
+
+    if (isProfileOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isProfileOpen])
 
   const navigation = [
     { name: 'Giftables', href: '/giftables', customerOnly: true },
@@ -100,47 +119,91 @@ const Layout = ({ children }) => {
                   <div className="w-5 h-5 border-2 border-gray-300 border-t-forest-green rounded-full animate-spin"></div>
                 </div>
               ) : user ? (
-                <div className="relative group">
-                  <button className="p-2 text-gray-700 hover:text-forest-green transition-colors flex items-center space-x-1">
-                    <User className="w-5 h-5" />
-                    <span className="hidden sm:inline text-sm font-medium">{userProfile?.name}</span>
+                <div className="relative" ref={profileRef}>
+                  <button 
+                    onClick={() => setIsProfileOpen(!isProfileOpen)}
+                    className="p-2 text-gray-700 hover:text-forest-green transition-colors flex items-center space-x-2 bg-gray-50 hover:bg-gray-100 rounded-lg px-3"
+                  >
+                    <div className="w-8 h-8 bg-forest-green rounded-full flex items-center justify-center">
+                      <span className="text-white text-sm font-semibold">
+                        {userProfile?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
+                      </span>
+                    </div>
+                    <div className="hidden md:block text-left">
+                      <p className="text-sm font-medium text-gray-900">
+                        {userProfile?.name || user?.email?.split('@')[0] || 'User'}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {userProfile?.role === 'admin' ? 'Admin' : 'Customer'}
+                      </p>
+                    </div>
                   </button>
                   
                   {/* User Dropdown */}
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-                    <div className="py-2">
-                      <div className="px-4 py-2 border-b border-gray-100">
-                        <p className="text-sm font-medium text-gray-900">{userProfile?.name}</p>
-                        <p className="text-xs text-gray-500">{userProfile?.email}</p>
+                  {isProfileOpen && (
+                    <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-50">
+                      <div className="py-2">
+                        <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 bg-forest-green rounded-full flex items-center justify-center">
+                              <span className="text-white text-sm font-semibold">
+                                {userProfile?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
+                              </span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-gray-900 truncate">
+                                {userProfile?.name || user?.email?.split('@')[0] || 'User'}
+                              </p>
+                              <p className="text-xs text-gray-500 truncate">
+                                {userProfile?.email || user?.email || ''}
+                              </p>
+                              {userProfile?.role && (
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium mt-1 ${
+                                  userProfile.role === 'admin' 
+                                    ? 'bg-purple-100 text-purple-800' 
+                                    : 'bg-blue-100 text-blue-800'
+                                }`}>
+                                  {userProfile.role === 'admin' ? 'Administrator' : 'Customer'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="py-1">
+                          <Link
+                            to="/orders"
+                            className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                            onClick={() => setIsProfileOpen(false)}
+                          >
+                            <ShoppingBag className="w-4 h-4 mr-3" />
+                            My Orders
+                          </Link>
+                          {isAdmin() && (
+                            <Link
+                              to="/admin-dashboard"
+                              className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                              onClick={() => setIsProfileOpen(false)}
+                            >
+                              <User className="w-4 h-4 mr-3" />
+                              Admin Dashboard
+                            </Link>
+                          )}
+                        </div>
+                        <div className="border-t border-gray-100 pt-1">
+                          <button
+                            onClick={async () => {
+                              setIsProfileOpen(false)
+                              await signOut()
+                            }}
+                            className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                          >
+                            <LogOut className="w-4 h-4 mr-3" />
+                            Sign Out
+                          </button>
+                        </div>
                       </div>
-                      <Link
-                        to="/orders"
-                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                        onClick={() => setIsMenuOpen(false)}
-                      >
-                        My Orders
-                      </Link>
-                      {isAdmin() && (
-                        <Link
-                          to="/admin-dashboard"
-                          className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                          onClick={() => setIsMenuOpen(false)}
-                        >
-                          Admin Dashboard
-                        </Link>
-                      )}
-                      <button
-                        onClick={async () => {
-                          setIsMenuOpen(false)
-                          await signOut()
-                        }}
-                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
-                      >
-                        <LogOut className="w-4 h-4" />
-                        <span>Sign Out</span>
-                      </button>
                     </div>
-                  </div>
+                  )}
                 </div>
               ) : (
                 <button 

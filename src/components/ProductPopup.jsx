@@ -1,13 +1,11 @@
-import { X, ShoppingCart, Heart, Package, Ruler, DollarSign } from 'lucide-react'
+import { X, ShoppingCart, Package, Ruler, DollarSign, CreditCard } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useCartStore } from '../store/cartStore'
-import { useWishlistStore } from '../store/wishlistStore'
 import toast from 'react-hot-toast'
 
 const ProductPopup = ({ product, isOpen, onClose }) => {
   const { user } = useAuth()
-  const { addItem } = useCartStore()
-  const { addItem: addToWishlist, isInWishlist, removeItem: removeFromWishlist } = useWishlistStore()
+  const { addItem, processCheckout } = useCartStore()
 
   if (!isOpen || !product) return null
 
@@ -17,7 +15,7 @@ const ProductPopup = ({ product, isOpen, onClose }) => {
       return
     }
 
-    if (product.status !== 'Available' || product.quantity_available <= 0) {
+    if ((product.status !== 'Available' && product.status !== 'available') || product.quantity_available <= 0) {
       toast.error('This item is currently not available')
       return
     }
@@ -25,22 +23,27 @@ const ProductPopup = ({ product, isOpen, onClose }) => {
     await addItem(product, 1)
   }
 
-  const handleWishlistToggle = async () => {
+  const handleBuyNow = async () => {
     if (!user) {
-      toast.error('Please login to manage wishlist')
+      toast.error('Please login to purchase items')
       return
     }
 
-    if (isInWishlist(product.artwork_id)) {
-      // Find the wishlist item and remove it
-      const wishlistItem = useWishlistStore.getState().items.find(item => item.artwork_id === product.artwork_id)
-      if (wishlistItem) {
-        await removeFromWishlist(wishlistItem.wishlist_id)
-      }
-    } else {
-      await addToWishlist(product)
+    if ((product.status !== 'Available' && product.status !== 'available') || product.quantity_available <= 0) {
+      toast.error('This item is currently not available')
+      return
+    }
+
+    // Add item to cart first
+    await addItem(product, 1)
+    
+    // Immediately proceed to checkout
+    const result = await processCheckout()
+    if (result.success) {
+      onClose()
     }
   }
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
@@ -61,11 +64,23 @@ const ProductPopup = ({ product, isOpen, onClose }) => {
           {/* Image Section */}
           <div className="lg:w-1/2 p-6">
             <div className="aspect-square bg-gray-100 rounded-xl overflow-hidden">
-              {product.image_url ? (
+              {product.image_urls && product.image_urls.length > 0 ? (
+                <img
+                  src={product.image_urls[0]}
+                  alt={product.title}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.target.src = product.image_url || '/placeholder-art.jpg'
+                  }}
+                />
+              ) : product.image_url ? (
                 <img
                   src={product.image_url}
                   alt={product.title}
                   className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.target.src = '/placeholder-art.jpg'
+                  }}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-gray-400">
@@ -118,7 +133,7 @@ const ProductPopup = ({ product, isOpen, onClose }) => {
                   </div>
                   <div className="flex items-center space-x-2">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      product.status === 'Available' && product.quantity_available > 0
+                      (product.status === 'Available' || product.status === 'available') && product.quantity_available > 0
                         ? 'bg-green-100 text-green-800'
                         : 'bg-red-100 text-red-800'
                     }`}>
@@ -146,34 +161,31 @@ const ProductPopup = ({ product, isOpen, onClose }) => {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row gap-3 pt-4">
-                <button
-                  onClick={handleAddToCart}
-                  disabled={product.status !== 'Available' || product.quantity_available <= 0}
-                  className="flex-1 btn-primary flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <ShoppingCart className="w-5 h-5" />
-                  <span>
-                    {product.status === 'Available' && product.quantity_available > 0
-                      ? 'Add to Cart'
-                      : 'Not Available'
-                    }
-                  </span>
-                </button>
-                
-                <button
-                  onClick={handleWishlistToggle}
-                  className={`flex-1 flex items-center justify-center space-x-2 ${
-                    isInWishlist(product.artwork_id)
-                      ? 'bg-red-500 text-white hover:bg-red-600'
-                      : 'btn-secondary'
-                  }`}
-                >
-                  <Heart className={`w-5 h-5 ${isInWishlist(product.artwork_id) ? 'fill-current' : ''}`} />
-                  <span>
-                    {isInWishlist(product.artwork_id) ? 'Remove from Wishlist' : 'Add to Wishlist'}
-                  </span>
-                </button>
+              <div className="flex flex-col gap-3 pt-4">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button
+                    onClick={handleAddToCart}
+                    disabled={(product.status !== 'Available' && product.status !== 'available') || product.quantity_available <= 0}
+                    className="flex-1 btn-primary flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ShoppingCart className="w-5 h-5" />
+                    <span>
+                      {product.status === 'Available' && product.quantity_available > 0
+                        ? 'Add to Cart'
+                        : 'Not Available'
+                      }
+                    </span>
+                  </button>
+                  
+                  <button
+                    onClick={handleBuyNow}
+                    disabled={(product.status !== 'Available' && product.status !== 'available') || product.quantity_available <= 0}
+                    className="flex-1 bg-forest-green hover:bg-forest-green-dark text-white px-6 py-3 rounded-lg font-semibold transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <CreditCard className="w-5 h-5" />
+                    <span>Buy Now</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>

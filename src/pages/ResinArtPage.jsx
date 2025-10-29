@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import ArtworkCard from '../components/ArtworkCard'
+import ProductPopup from '../components/ProductPopup'
 import FilterBar from '../components/FilterBar'
 import { Loader2, Sparkles } from 'lucide-react'
 
@@ -10,6 +11,8 @@ const ResinArtPage = () => {
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [sortBy, setSortBy] = useState('newest')
   const [viewMode, setViewMode] = useState('grid')
+  const [selectedProduct, setSelectedProduct] = useState(null)
+  const [isPopupOpen, setIsPopupOpen] = useState(false)
 
   useEffect(() => {
     fetchResinArtworks()
@@ -128,15 +131,8 @@ const ResinArtPage = () => {
   })
 
   const handleViewArtwork = (artwork) => {
-    console.log('View artwork:', artwork)
-  }
-
-  const handleAddToCart = (artwork) => {
-    console.log('Add to cart:', artwork)
-  }
-
-  const handleAddToWishlist = (artwork) => {
-    console.log('Add to wishlist:', artwork)
+    setSelectedProduct(artwork)
+    setIsPopupOpen(true)
   }
 
   if (loading) {
@@ -206,16 +202,24 @@ const ResinArtPage = () => {
           >
             {filteredArtworks.map((artwork) => (
               <ArtworkCard
-                key={artwork.id}
+                key={artwork.artwork_id || artwork.id}
                 artwork={artwork}
                 onView={handleViewArtwork}
-                onAddToCart={handleAddToCart}
-                onAddToWishlist={handleAddToWishlist}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* Product Popup */}
+      <ProductPopup
+        product={selectedProduct}
+        isOpen={isPopupOpen}
+        onClose={() => {
+          setIsPopupOpen(false)
+          setSelectedProduct(null)
+        }}
+      />
     </div>
   )
 }

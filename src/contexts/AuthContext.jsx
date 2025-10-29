@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useCartStore } from '../store/cartStore'
-import { useWishlistStore } from '../store/wishlistStore'
 import toast from 'react-hot-toast'
 
 const AuthContext = createContext({
@@ -32,7 +32,6 @@ export const AuthProvider = ({ children }) => {
   const [userProfile, setUserProfile] = useState(null)
   const [initialized, setInitialized] = useState(false)
   const { setUser: setCartUser } = useCartStore()
-  const { setUser: setWishlistUser } = useWishlistStore()
 
   useEffect(() => {
     let mounted = true
@@ -45,67 +44,97 @@ export const AuthProvider = ({ children }) => {
           setInitialized(true)
         }
 
-        // Check for cached session first (non-blocking)
+        // Supabase handles session persistence internally via localStorage
+        // We'll verify the session with Supabase, but can use cached data for initial render
         try {
           const cachedSessionRaw = localStorage.getItem('sb-session')
-          if (cachedSessionRaw) {
+          if (cachedSessionRaw && mounted) {
             const cachedSession = JSON.parse(cachedSessionRaw)
-            if (cachedSession?.user && mounted) {
+            if (cachedSession?.user) {
+              // Set initial user state from cache (will be verified by Supabase)
               setUser(cachedSession.user)
               setCartUser(cachedSession.user)
-              setWishlistUser(cachedSession.user)
               
               // Try to hydrate cached profile
               const cachedProfileRaw = localStorage.getItem('user-profile')
               if (cachedProfileRaw) {
-                const cachedProfile = JSON.parse(cachedProfileRaw)
-                setUserProfile(cachedProfile)
-              } else {
-                // Fetch profile in background
-                fetchUserProfile(cachedSession.user.id)
+                try {
+                  const cachedProfile = JSON.parse(cachedProfileRaw)
+                  if (cachedProfile.user_id === cachedSession.user.id) {
+                    setUserProfile(cachedProfile)
+                  }
+                } catch {}
               }
-              return
+              // Don't return - still verify with Supabase below
             }
           }
         } catch (error) {
           console.error('Error parsing cached session:', error)
         }
 
-        // If no cached session, check with Supabase (non-blocking with timeout)
-        const sessionPromise = supabase.auth.getSession()
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Session check timeout')), 5000)
-        )
+        // Always check with Supabase for current session
+        // Supabase handles session persistence internally, but we verify it
+        const { data: { session }, error } = await supabase.auth.getSession()
         
-        try {
-          const { data: { session }, error } = await Promise.race([sessionPromise, timeoutPromise])
-          
-          if (error) {
-            console.error('Error getting session:', error)
-            return
-          }
-
+        if (error) {
+          console.error('Error getting session:', error)
+          // Don't clear cached session on error - might be temporary network issue
           if (mounted) {
-            setUser(session?.user ?? null)
-            setCartUser(session?.user ?? null)
-            setWishlistUser(session?.user ?? null)
-            if (session?.user) {
-              fetchUserProfile(session.user.id) // Don't await - run in background
-              try {
-                localStorage.setItem('sb-session', JSON.stringify(session))
-              } catch {}
-            } else {
-              setUserProfile(null)
-            }
+            setInitialized(true)
+            setLoading(false)
           }
-        } catch (timeoutError) {
-          console.error('Session check timed out:', timeoutError)
-          // Continue with null user state
+          return
+        }
+
+        if (mounted) {
+          if (session?.user) {
+            // Valid session exists - restore user state
+            console.log('Session found, user:', session.user.email)
+            setUser(session.user)
+            setCartUser(session.user)
+            
+            // Persist session
+            try {
+              localStorage.setItem('sb-session', JSON.stringify(session))
+            } catch (err) {
+              console.error('Error saving session:', err)
+            }
+            
+            // Restore profile from cache or fetch
+            const cachedProfileRaw = localStorage.getItem('user-profile')
+            if (cachedProfileRaw) {
+              try {
+                const cachedProfile = JSON.parse(cachedProfileRaw)
+                // Verify profile matches current user
+                if (cachedProfile.user_id === session.user.id) {
+                  setUserProfile(cachedProfile)
+                  console.log('Profile restored from cache')
+                } else {
+                  // Profile doesn't match, fetch new one
+                  fetchUserProfile(session.user.id)
+                }
+              } catch {
+                fetchUserProfile(session.user.id)
+              }
+            } else {
+              // No cached profile, fetch it
+              fetchUserProfile(session.user.id)
+            }
+          } else {
+            // No session - user is logged out
+            console.log('No session found')
+            setUser(null)
+            setCartUser(null)
+            setUserProfile(null)
+          }
+          setInitialized(true)
+          setLoading(false)
         }
       } catch (error) {
         console.error('Error initializing auth:', error)
         if (mounted) {
           setInitialized(true)
+          setLoading(false)
         }
       }
     }
@@ -118,20 +147,36 @@ export const AuthProvider = ({ children }) => {
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return
 
-      setUser(session?.user ?? null)
-      setCartUser(session?.user ?? null)
-      setWishlistUser(session?.user ?? null)
-      if (session?.user) {
-        await fetchUserProfile(session.user.id)
-        // Persist session for routing redirects
-        try {
-          const serialized = JSON.stringify(session)
-          localStorage.setItem('sb-session', serialized)
-        } catch {}
-      } else {
+      console.log('Auth state changed:', event, session?.user?.email || 'No user')
+
+      // Handle auth state changes properly
+      // CRITICAL: Only clear session on explicit SIGNED_OUT event
+      // Do NOT clear on other events with null session - Supabase handles token refresh
+      
+      if (event === 'SIGNED_OUT') {
+        // Explicit sign out - clear everything
+        console.log('User explicitly signed out')
+        setUser(null)
+        setCartUser(null)
         setUserProfile(null)
         localStorage.removeItem('sb-session')
+        localStorage.removeItem('user-profile')
+      } else if (session?.user) {
+        // Valid session exists - update state
+        console.log('Session active for user:', session.user.email)
+        setUser(session.user)
+        setCartUser(session.user)
+        await fetchUserProfile(session.user.id)
+        
+        // Backup session to localStorage
+        try {
+          localStorage.setItem('sb-session', JSON.stringify(session))
+        } catch (err) {
+          console.error('Error saving session:', err)
+        }
       }
+      // For TOKEN_REFRESHED or other events without session, don't clear user state
+      // Ra Supabase manages session persistence internally
     })
 
     return () => {
@@ -246,7 +291,6 @@ export const AuthProvider = ({ children }) => {
         // Set user immediately for responsive UI
         setUser(data.user)
         setCartUser(data.user)
-        setWishlistUser(data.user)
 
         // Check if user exists in our users table, if not create profile (background)
         const { data: existingUser } = await supabase
@@ -278,33 +322,32 @@ export const AuthProvider = ({ children }) => {
           }
         }
 
-        // Fetch profile in background
-        fetchUserProfile(data.user.id)
-        
-        // Persist session immediately
-        try {
-          const { data: sessionData } = await supabase.auth.getSession()
-          if (sessionData?.session) {
-            localStorage.setItem('sb-session', JSON.stringify(sessionData.session))
-          }
-        } catch {}
-        
-        toast.success('Signed in successfully!')
-        
-        // Redirect after a short delay to allow UI to update
-        setTimeout(() => {
+        // Get and persist session
+        const { data: sessionData } = await supabase.auth.getSession()
+        if (sessionData?.session) {
           try {
+            localStorage.setItem('sb-session', JSON.stringify(sessionData.session))
+          } catch {}
+          
+          // Fetch profile and wait for it
+          await fetchUserProfile(data.user.id)
+          
+          toast.success('Signed in successfully!')
+          
+          // Redirect but preserve session - use replace to avoid adding to history
+          setTimeout(() => {
             const profileRaw = localStorage.getItem('user-profile')
             const profile = profileRaw ? JSON.parse(profileRaw) : null
             if (profile?.role === 'admin') {
-              window.location.assign('/admin-dashboard')
+              window.location.replace('/admin-dashboard')
             } else {
-              window.location.assign('/')
+              window.location.replace('/')
             }
-          } catch {
-            window.location.assign('/')
-          }
-        }, 100)
+          }, 300)
+        } else {
+          toast.success('Signed in successfully!')
+          window.location.replace('/')
+        }
       }
 
       return { data, error: null }
@@ -319,10 +362,25 @@ export const AuthProvider = ({ children }) => {
 
   const signInWithGoogle = async () => {
     try {
+      // Get the redirect URL - use environment variable if available, otherwise use current origin
+      let siteUrl = import.meta.env.VITE_SITE_URL || window.location.origin
+      
+      // Ensure siteUrl doesn't have a trailing slash
+      siteUrl = siteUrl.replace(/\/$/, '')
+      
+      const redirectUrl = `${siteUrl}/auth/callback`
+      
+      console.log('Google OAuth redirect URL:', redirectUrl)
+      console.log('Site URL source:', import.meta.env.VITE_SITE_URL ? 'Environment variable' : 'window.location.origin')
+      
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`
+          redirectTo: redirectUrl,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
         }
       })
 
@@ -343,13 +401,11 @@ export const AuthProvider = ({ children }) => {
       setUser(null)
       setUserProfile(null)
       setCartUser(null)
-      setWishlistUser(null)
       
       // Clear all localStorage items
       localStorage.removeItem('sb-session')
       localStorage.removeItem('user-profile')
       localStorage.removeItem('cart-storage')
-      localStorage.removeItem('wishlist-storage')
       
       // Sign out from Supabase
       const { error } = await supabase.auth.signOut()
