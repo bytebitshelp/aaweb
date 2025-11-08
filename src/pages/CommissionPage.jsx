@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Brush, Palette, Award, Clock, Star, Users, MessageCircle, CheckCircle } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
+import { sendSupportEmail, buildHtmlFromObject } from '../services/resendEmail'
 
 const CommissionPage = () => {
   const { user } = useAuth()
@@ -17,7 +18,7 @@ const CommissionPage = () => {
     style: '',
     budget: '',
     timeline: '',
-    referenceImages: null,
+    referenceImages: '',
     additionalNotes: ''
   })
 
@@ -26,7 +27,7 @@ const CommissionPage = () => {
       id: 'portrait',
       title: 'Portrait Commission',
       description: 'Custom portraits from your photos',
-      price: 'Starting from $200',
+      price: 'Starting from ₹200',
       timeline: '2-4 weeks',
       features: ['High quality materials', 'Multiple style options', 'Digital preview', 'Free revisions'],
       icon: Users
@@ -35,7 +36,7 @@ const CommissionPage = () => {
       id: 'landscape',
       title: 'Landscape Commission',
       description: 'Custom landscape paintings',
-      price: 'Starting from $300',
+      price: 'Starting from ₹300',
       timeline: '3-5 weeks',
       features: ['Various mediums', 'Custom size', 'Frame options', 'Installation help'],
       icon: Brush
@@ -44,7 +45,7 @@ const CommissionPage = () => {
       id: 'abstract',
       title: 'Abstract Commission',
       description: 'Personalized abstract artwork',
-      price: 'Starting from $250',
+      price: 'Starting from ₹250',
       timeline: '2-3 weeks',
       features: ['Color consultation', 'Style matching', 'Texture options', 'Modern framing'],
       icon: Palette
@@ -53,7 +54,7 @@ const CommissionPage = () => {
       id: 'corporate',
       title: 'Corporate Commission',
       description: 'Large-scale artwork for businesses',
-      price: 'Starting from $500',
+      price: 'Starting from ₹500',
       timeline: '4-8 weeks',
       features: ['Brand integration', 'Large formats', 'Installation', 'Maintenance'],
       icon: Award
@@ -76,14 +77,7 @@ const CommissionPage = () => {
     }))
   }
 
-  const handleFileChange = (e) => {
-    setFormData(prev => ({
-      ...prev,
-      referenceImages: e.target.files[0]
-    }))
-  }
-
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     
     if (!user) {
@@ -91,9 +85,38 @@ const CommissionPage = () => {
       return
     }
 
-    // Here you would typically send the data to your backend
+    const parsedUrls = (formData.referenceImages || '').toString()
+    const html = buildHtmlFromObject('New Commission Request', [
+      { label: 'Name', value: formData.name },
+      { label: 'Email', value: formData.email },
+      { label: 'Phone', value: formData.phone },
+      { label: 'Commission Type', value: formData.commissionType || selectedType || 'Not specified' },
+      { label: 'Subject', value: formData.subject },
+      { label: 'Description', value: formData.description },
+      { label: 'Preferred Size', value: formData.size },
+      { label: 'Preferred Style', value: formData.style },
+      { label: 'Budget Range', value: formData.budget },
+      { label: 'Timeline', value: formData.timeline },
+      { label: 'Reference Links', value: formData.referenceImages || 'None provided' },
+      { label: 'Additional Notes', value: formData.additionalNotes }
+    ])
+
+    toast.loading('Sending commission request...', { id: 'commission-request' })
+
+    const emailResult = await sendSupportEmail({
+      subject: `Commission Request - ${formData.name || 'New Client'}`,
+      html,
+      replyTo: formData.email
+    })
+
+    toast.dismiss('commission-request')
+
+    if (!emailResult.success) {
+      toast.error(emailResult.error || 'Failed to submit request. Please try again.')
+      return
+    }
+
     toast.success('Commission request submitted successfully!')
-    console.log('Commission request:', formData)
     
     // Reset form
     setFormData({
@@ -107,7 +130,7 @@ const CommissionPage = () => {
       style: '',
       budget: '',
       timeline: '',
-      referenceImages: null,
+      referenceImages: '',
       additionalNotes: ''
     })
     setSelectedType('')
@@ -366,26 +389,20 @@ const CommissionPage = () => {
 
               <div className="mb-8">
                 <label htmlFor="referenceImages" className="block text-sm font-medium text-gray-700 mb-2">
-                  Reference Images
+                  Reference Image Links (Optional)
                 </label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-forest-green transition-colors">
-                  <input
-                    type="file"
-                    id="referenceImages"
-                    name="referenceImages"
-                    onChange={handleFileChange}
-                    accept="image/*"
-                    className="hidden"
-                  />
-                  <label
-                    htmlFor="referenceImages"
-                    className="cursor-pointer flex flex-col items-center space-y-2"
-                  >
-                    <Star className="w-8 h-8 text-gray-400" />
-                    <span className="text-gray-600">Upload reference images (highly recommended)</span>
-                    <span className="text-sm text-gray-500">PNG, JPG up to 10MB each</span>
-                  </label>
-                </div>
+                <textarea
+                  id="referenceImages"
+                  name="referenceImages"
+                  rows={4}
+                  value={formData.referenceImages}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-forest-green focus:border-transparent"
+                  placeholder="Paste Google Drive, Pinterest or Instagram links here (one per line)"
+                />
+                <p className="mt-2 text-sm text-gray-500">
+                  Sharing references helps our artists better understand your vision. Ensure the links are publicly accessible.
+                </p>
               </div>
 
               <div className="text-center">

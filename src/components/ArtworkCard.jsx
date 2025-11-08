@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ShoppingCart, Eye } from 'lucide-react'
 import { useCartStore } from '../store/cartStore'
 import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
 import ImageCarousel from './ImageCarousel'
+import { getImageUrl, getImageUrls, isVideoFile, PLACEHOLDER_IMAGE } from '../lib/imageUtils'
 
 const ArtworkCard = ({ artwork, onView }) => {
   const [imageLoaded, setImageLoaded] = useState(false)
@@ -15,19 +16,36 @@ const ArtworkCard = ({ artwork, onView }) => {
     setImageLoaded(true)
   }
 
+  const galleryMedia = getImageUrls(artwork.image_urls)
+  const hasGalleryMedia = galleryMedia.length > 0
+
+  let fallbackMediaUrl = hasGalleryMedia
+    ? galleryMedia[0]
+    : (artwork.image_url ? getImageUrl(artwork.image_url) : null)
+
+  if (fallbackMediaUrl === PLACEHOLDER_IMAGE) {
+    fallbackMediaUrl = null
+  }
+
+  const fallbackIsVideo = fallbackMediaUrl ? isVideoFile(fallbackMediaUrl) : false
+  const isAvailable =
+    (artwork.status === 'Available' || artwork.status === 'available') &&
+    (artwork.quantity_available || 0) > 0
+
+  useEffect(() => {
+    if (!hasGalleryMedia && !fallbackMediaUrl) {
+      setImageLoaded(true)
+    }
+  }, [hasGalleryMedia, fallbackMediaUrl])
+
   const handleAddToCart = async () => {
     if (!user) {
       toast.error('Please login to add items to cart')
       return
     }
 
-    if (!artwork.status || (artwork.status !== 'Available' && artwork.status !== 'available')) {
+    if (!isAvailable) {
       toast.error('This artwork is not available')
-      return
-    }
-
-    if (artwork.quantity_available <= 0) {
-      toast.error('Out of stock')
       return
     }
 
@@ -49,24 +67,51 @@ const ArtworkCard = ({ artwork, onView }) => {
             <div className="w-8 h-8 border-2 border-gray-300 border-t-forest-green rounded-full animate-spin"></div>
           </div>
         )}
-        {artwork.image_urls && artwork.image_urls.length > 0 ? (
+        {hasGalleryMedia ? (
           <ImageCarousel 
-            images={artwork.image_urls} 
+            images={galleryMedia} 
             alt={`${artwork.title} by ${artwork.artist_name}`}
           />
+        ) : fallbackMediaUrl ? (
+          fallbackIsVideo ? (
+            <video
+              src={fallbackMediaUrl}
+              className={`w-full h-full object-cover transition-all duration-300 ${
+                imageLoaded ? 'opacity-100' : 'opacity-0'
+              } ${isHovered ? 'scale-105' : 'scale-100'}`}
+              onLoadedData={handleImageLoad}
+              onError={(e) => {
+                e.target.style.display = 'none'
+                setImageLoaded(true)
+              }}
+              controls
+              muted
+              loop
+              playsInline
+            />
+          ) : (
+            <img
+              src={fallbackMediaUrl}
+              alt={`${artwork.title} by ${artwork.artist_name}`}
+              referrerPolicy="no-referrer"
+              crossOrigin="anonymous"
+              className={`w-full h-full object-cover transition-all duration-300 ${
+                imageLoaded ? 'opacity-100' : 'opacity-0'
+              } ${isHovered ? 'scale-105' : 'scale-100'}`}
+              onLoad={handleImageLoad}
+              onError={(e) => {
+                e.target.src = PLACEHOLDER_IMAGE
+                setImageLoaded(true)
+              }}
+              loading="lazy"
+            />
+          )
         ) : (
           <img
-            src={artwork.image_url || '/placeholder-art.jpg'}
+            src={PLACEHOLDER_IMAGE}
             alt={`${artwork.title} by ${artwork.artist_name}`}
-            className={`w-full h-full object-cover transition-all duration-300 ${
-              imageLoaded ? 'opacity-100' : 'opacity-0'
-            } ${isHovered ? 'scale-105' : 'scale-100'}`}
+            className="w-full h-full object-cover"
             onLoad={handleImageLoad}
-            onError={(e) => {
-              e.target.src = '/placeholder-art.jpg'
-              setImageLoaded(true)
-            }}
-            loading="lazy"
           />
         )}
         
@@ -74,12 +119,10 @@ const ArtworkCard = ({ artwork, onView }) => {
         <div className="absolute top-3 right-3">
           <span
             className={`px-2 py-1 rounded-full text-xs font-medium ${
-              (artwork.status === 'Available' || artwork.status === 'available') && artwork.quantity_available > 0
-                ? 'bg-green-100 text-green-800'
-                : 'bg-red-100 text-red-800'
+              isAvailable ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
             }`}
           >
-            {(artwork.status === 'Available' || artwork.status === 'available') && artwork.quantity_available > 0 ? 'Available' : 'Sold Out'}
+            {isAvailable ? 'Available' : 'Sold'}
           </span>
         </div>
 
@@ -103,7 +146,7 @@ const ArtworkCard = ({ artwork, onView }) => {
             >
               <Eye className="w-4 h-4 text-gray-700" />
             </button>
-            {(artwork.status === 'Available' || artwork.status === 'available') && artwork.quantity_available > 0 && (
+            {isAvailable && (
               <button
                 onClick={(e) => {
                   e.stopPropagation()
@@ -136,9 +179,9 @@ const ArtworkCard = ({ artwork, onView }) => {
               ₹{artwork.price}
             </span>
             <p className="text-xs text-gray-500">
-              {artwork.quantity_available > 0 
-                ? `${artwork.quantity_available} available`
-                : 'Out of stock'
+              {isAvailable
+                ? `${artwork.quantity_available} in stock`
+                : 'Sold out'
               }
             </p>
           </div>
@@ -151,7 +194,6 @@ const ArtworkCard = ({ artwork, onView }) => {
         <button
           onClick={(e) => {
             e.stopPropagation()
-            const isAvailable = (artwork.status === 'Available' || artwork.status === 'available') && artwork.quantity_available > 0
             if (!user) {
               toast.error('Please login to view details')
               onView(artwork)
@@ -162,16 +204,16 @@ const ArtworkCard = ({ artwork, onView }) => {
               onView(artwork)
             }
           }}
-          disabled={(artwork.status !== 'Available' && artwork.status !== 'available') || artwork.quantity_available <= 0}
+          disabled={!isAvailable}
           className={`w-full py-2 px-4 rounded-lg font-medium transition-all ${
-            (artwork.status === 'Available' || artwork.status === 'available') && artwork.quantity_available > 0
+            isAvailable
               ? 'bg-forest-green text-white hover:bg-forest-green-dark active:bg-forest-green-darker'
               : 'bg-gray-300 text-gray-600 cursor-not-allowed opacity-60'
           }`}
         >
-          {(artwork.status === 'Available' || artwork.status === 'available') && artwork.quantity_available > 0
+          {isAvailable
             ? 'View Details'
-            : 'Out of Stock'
+            : 'Sold Out'
           }
         </button>
       </div>

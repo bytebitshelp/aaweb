@@ -20,16 +20,8 @@ const LoginPage = () => {
 
     try {
       setLoading(true)
+      // AuthContext.signIn handles profile creation and redirects based on role
       await signIn(email, password)
-      
-      // Check if it's admin login
-      if (email === 'asadmohammed181105@gmail.com' && password === '123456789') {
-        toast.success('Welcome back, Admin!')
-        navigate('/admin-dashboard')
-      } else {
-        toast.success('Welcome back!')
-        navigate('/')
-      }
     } catch (error) {
       console.error('Login error:', error)
       toast.error('Invalid email or password')
@@ -41,16 +33,8 @@ const LoginPage = () => {
   const handleGoogleLogin = async () => {
     try {
       setLoading(true)
-      const result = await signInWithGoogle()
-      
-      // Check if the Google user is admin
-      if (result.user.email === 'asadmohammed181105@gmail.com') {
-        toast.success('Welcome back, Admin!')
-        navigate('/admin-dashboard')
-      } else {
-        toast.success('Welcome!')
-        navigate('/')
-      }
+      // This triggers OAuth and redirects to /auth/callback where role and redirect are handled
+      await signInWithGoogle()
     } catch (error) {
       console.error('Google login error:', error)
       toast.error('Google login failed')

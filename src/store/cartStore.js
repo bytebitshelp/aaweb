@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { supabase } from '../lib/supabase'
+import { getImageUrl, getImageUrls, PLACEHOLDER_IMAGE } from '../lib/imageUtils'
 import toast from 'react-hot-toast'
 
 export const useCartStore = create(
@@ -14,10 +15,56 @@ export const useCartStore = create(
       setUser: (user) => {
         set({ user })
         if (user) {
-          // Fetch cart items from database when user logs in
-          get().fetchCartItems()
+          // Ensure user profile exists, then fetch cart items
+          get().ensureUserProfile(user.id, user.email, user.user_metadata?.name || user.email.split('@')[0])
+            .then(() => {
+              get().fetchCartItems()
+            })
+            .catch(err => {
+              console.error('Error ensuring user profile:', err)
+            })
         } else {
           set({ items: [] })
+        }
+      },
+
+      // Ensure user profile exists in users table
+      ensureUserProfile: async (userId, userEmail, userName) => {
+        try {
+          // Check if user exists
+          const { data: existingUser, error: checkError } = await supabase
+            .from('users')
+            .select('user_id')
+            .eq('user_id', userId)
+            .single()
+
+          // If user doesn't exist (404 or no rows), create profile
+          if (!existingUser || checkError?.code === 'PGRST116') {
+            // Determine if admin
+            const isAdminEmail = userEmail === 'asadmohammed181105@gmail.com'
+            const userRole = isAdminEmail ? 'admin' : 'customer'
+            
+            const { error: insertError } = await supabase
+              .from('users')
+              .insert([
+                {
+                  user_id: userId,
+                  email: userEmail,
+                  name: userName || userEmail.split('@')[0],
+                  role: userRole,
+                  created_at: new Date().toISOString()
+                }
+              ])
+
+            // Ignore unique constraint errors (user might have been created between check and insert)
+            if (insertError && insertError.code !== '23505') {
+              console.error('Error creating user profile:', insertError)
+              throw insertError
+            }
+          }
+        } catch (error) {
+          console.error('Error ensuring user profile:', error)
+          // Don't throw - let it continue, might still work
         }
       },
 
@@ -43,6 +90,13 @@ export const useCartStore = create(
         }
 
         try {
+          // Ensure user profile exists before adding to cart
+          await get().ensureUserProfile(
+            user.id,
+            user.email,
+            user.user_metadata?.name || user.email.split('@')[0]
+          )
+
           const existingItem = get().items.find(item => item.artwork_id === artwork.artwork_id)
           
           if (existingItem) {
@@ -82,6 +136,44 @@ export const useCartStore = create(
               .single()
 
             if (error) {
+              // Handle foreign key constraint violation (user doesn't exist in users table)
+              if (error.code === '23503' && error.message?.includes('cart_user_id_fkey')) {
+                console.error('Foreign key constraint error - user profile missing')
+                toast.error('User profile not found. Please try again.')
+                
+                // Try to create user profile and retry
+                try {
+                  await get().ensureUserProfile(
+                    user.id,
+                    user.email,
+                    user.user_metadata?.name || user.email.split('@')[0]
+                  )
+                  
+                  // Retry adding to cart
+                  const { data: retryData, error: retryError } = await supabase
+                    .from('cart')
+                    .insert([
+                      {
+                        user_id: user.id,
+                        artwork_id: artwork.artwork_id,
+                        quantity: Math.min(quantity, artwork.quantity_available || 0),
+                        created_at: new Date().toISOString()
+                      }
+                    ])
+                    .select()
+                    .single()
+
+                  if (retryError) throw retryError
+                  
+                  await get().fetchCartItems()
+                  toast.success('Item added to cart!')
+                  return
+                } catch (retryErr) {
+                  console.error('Retry failed:', retryErr)
+                  throw error
+                }
+              }
+              
               // Handle unique constraint violation (item already in cart)
               if (error.code === '23505') {
                 // Fetch existing cart item and update quantity
@@ -267,11 +359,18 @@ export const useCartStore = create(
               }
               
               const artwork = cartItem.artworks
+              const mediaUrls = getImageUrls(artwork.image_urls)
+              let primaryImageUrl = mediaUrls[0] || (artwork.image_url ? getImageUrl(artwork.image_url) : null)
+              if (primaryImageUrl === PLACEHOLDER_IMAGE) {
+                primaryImageUrl = null
+              }
               const isAvailable = (artwork.status === 'Available' || artwork.status === 'available') && (artwork.quantity_available || 0) > 0
               
               // Return valid item with corrected quantity
               return {
                 ...artwork,
+                image_urls: mediaUrls,
+                image_url: primaryImageUrl || null,
                 cart_id: cartItem.cart_id,
                 quantity: Math.min(cartItem.quantity || 1, artwork.quantity_available || 0)
               }

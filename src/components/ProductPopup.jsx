@@ -2,12 +2,29 @@ import { X, ShoppingCart, Package, Ruler, DollarSign, CreditCard } from 'lucide-
 import { useAuth } from '../contexts/AuthContext'
 import { useCartStore } from '../store/cartStore'
 import toast from 'react-hot-toast'
+import { getImageUrl, getImageUrls, isVideoFile, PLACEHOLDER_IMAGE } from '../lib/imageUtils'
+import ImageCarousel from './ImageCarousel'
 
 const ProductPopup = ({ product, isOpen, onClose }) => {
   const { user } = useAuth()
-  const { addItem, processCheckout } = useCartStore()
+  const { addItem } = useCartStore()
 
   if (!isOpen || !product) return null
+
+  const galleryMedia = getImageUrls(product.image_urls)
+  const hasGalleryMedia = galleryMedia.length > 0
+  let fallbackMediaUrl = hasGalleryMedia
+    ? galleryMedia[0]
+    : (product.image_url ? getImageUrl(product.image_url) : null)
+
+  if (fallbackMediaUrl === PLACEHOLDER_IMAGE) {
+    fallbackMediaUrl = null
+  }
+
+  const fallbackIsVideo = fallbackMediaUrl ? isVideoFile(fallbackMediaUrl) : false
+  const isAvailable =
+    (product.status === 'Available' || product.status === 'available') &&
+    (product.quantity_available || 0) > 0
 
   const handleAddToCart = async () => {
     if (!user) {
@@ -15,7 +32,7 @@ const ProductPopup = ({ product, isOpen, onClose }) => {
       return
     }
 
-    if ((product.status !== 'Available' && product.status !== 'available') || product.quantity_available <= 0) {
+    if (!isAvailable) {
       toast.error('This item is currently not available')
       return
     }
@@ -23,25 +40,9 @@ const ProductPopup = ({ product, isOpen, onClose }) => {
     await addItem(product, 1)
   }
 
-  const handleBuyNow = async () => {
-    if (!user) {
-      toast.error('Please login to purchase items')
-      return
-    }
-
-    if ((product.status !== 'Available' && product.status !== 'available') || product.quantity_available <= 0) {
-      toast.error('This item is currently not available')
-      return
-    }
-
-    // Add item to cart first
-    await addItem(product, 1)
-    
-    // Immediately proceed to checkout
-    const result = await processCheckout()
-    if (result.success) {
-      onClose()
-    }
+  const handleBuyNow = () => {
+    window.open('https://www.instagram.com/arty.affairs/', '_blank', 'noopener,noreferrer')
+    onClose()
   }
 
 
@@ -61,31 +62,45 @@ const ProductPopup = ({ product, isOpen, onClose }) => {
 
         {/* Content */}
         <div className="flex flex-col lg:flex-row max-h-[calc(90vh-80px)] overflow-hidden">
-          {/* Image Section */}
+          {/* Media Section */}
           <div className="lg:w-1/2 p-6">
             <div className="aspect-square bg-gray-100 rounded-xl overflow-hidden">
-              {product.image_urls && product.image_urls.length > 0 ? (
-                <img
-                  src={product.image_urls[0]}
+              {hasGalleryMedia ? (
+                <ImageCarousel 
+                  images={galleryMedia} 
                   alt={product.title}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.target.src = product.image_url || '/placeholder-art.jpg'
-                  }}
                 />
-              ) : product.image_url ? (
-                <img
-                  src={product.image_url}
-                  alt={product.title}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.target.src = '/placeholder-art.jpg'
-                  }}
-                />
+              ) : fallbackMediaUrl ? (
+                fallbackIsVideo ? (
+                  <video
+                    src={fallbackMediaUrl}
+                    className="w-full h-full object-cover"
+                    controls
+                    muted
+                    loop
+                    playsInline
+                    onError={(e) => {
+                      e.target.style.display = 'none'
+                    }}
+                  />
+                ) : (
+                  <img
+                    src={fallbackMediaUrl}
+                    alt={product.title}
+                    referrerPolicy="no-referrer"
+                    crossOrigin="anonymous"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.src = PLACEHOLDER_IMAGE
+                    }}
+                  />
+                )
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-gray-400">
-                  <Package className="w-24 h-24" />
-                </div>
+                <img
+                  src={PLACEHOLDER_IMAGE}
+                  alt={product.title}
+                  className="w-full h-full object-cover opacity-70"
+                />
               )}
             </div>
           </div>
@@ -133,16 +148,11 @@ const ProductPopup = ({ product, isOpen, onClose }) => {
                   </div>
                   <div className="flex items-center space-x-2">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      (product.status === 'Available' || product.status === 'available') && product.quantity_available > 0
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-red-100 text-red-800'
+                      isAvailable ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                     }`}>
-                      {product.status === 'Available' && product.quantity_available > 0
-                        ? 'Available'
-                        : 'Sold Out / Not Available'
-                      }
+                      {isAvailable ? 'Available' : 'Sold'}
                     </span>
-                    {product.status === 'Available' && product.quantity_available > 0 && (
+                    {isAvailable && (
                       <span className="text-sm text-gray-600">
                         ({product.quantity_available} left)
                       </span>
@@ -156,36 +166,40 @@ const ProductPopup = ({ product, isOpen, onClose }) => {
                     <Ruler className="w-5 h-5 text-forest-green" />
                     <h4 className="font-medium text-gray-900">Stock</h4>
                   </div>
-                  <p className="text-gray-600">{product.quantity_available} pieces</p>
+                  <p className="text-gray-600">
+                    {isAvailable ? `${product.quantity_available} pieces` : 'Sold out'}
+                  </p>
                 </div>
               </div>
 
               {/* Action Buttons */}
               <div className="flex flex-col gap-3 pt-4">
-                <div className="flex flex-col sm:flex-row gap-3">
+                {isAvailable ? (
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <button
+                      onClick={handleAddToCart}
+                      className="flex-1 btn-primary flex items-center justify-center space-x-2"
+                    >
+                      <ShoppingCart className="w-5 h-5" />
+                      <span>Add to Cart</span>
+                    </button>
+                    
+                    <button
+                      onClick={handleBuyNow}
+                      className="flex-1 bg-forest-green hover:bg-forest-green-dark text-white px-6 py-3 rounded-lg font-semibold transition-colors flex items-center justify-center space-x-2"
+                    >
+                      <CreditCard className="w-5 h-5" />
+                      <span>Buy on Instagram</span>
+                    </button>
+                  </div>
+                ) : (
                   <button
-                    onClick={handleAddToCart}
-                    disabled={(product.status !== 'Available' && product.status !== 'available') || product.quantity_available <= 0}
-                    className="flex-1 btn-primary flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled
+                    className="w-full bg-gray-300 text-gray-600 px-6 py-3 rounded-lg font-semibold opacity-70 cursor-not-allowed"
                   >
-                    <ShoppingCart className="w-5 h-5" />
-                    <span>
-                      {product.status === 'Available' && product.quantity_available > 0
-                        ? 'Add to Cart'
-                        : 'Not Available'
-                      }
-                    </span>
+                    Sold Out
                   </button>
-                  
-                  <button
-                    onClick={handleBuyNow}
-                    disabled={(product.status !== 'Available' && product.status !== 'available') || product.quantity_available <= 0}
-                    className="flex-1 bg-forest-green hover:bg-forest-green-dark text-white px-6 py-3 rounded-lg font-semibold transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <CreditCard className="w-5 h-5" />
-                    <span>Buy Now</span>
-                  </button>
-                </div>
+                )}
               </div>
             </div>
           </div>

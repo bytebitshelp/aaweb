@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Palette, Upload, CheckCircle, Star, Users, Clock, MessageCircle } from 'lucide-react'
+import { Palette, CheckCircle, Star, Users, Clock, MessageCircle } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
+import { sendSupportEmail, buildHtmlFromObject } from '../services/resendEmail'
 
 const CustomizationPage = () => {
   const { user } = useAuth()
@@ -14,7 +15,7 @@ const CustomizationPage = () => {
     description: '',
     budget: '',
     timeline: '',
-    referenceImages: null
+    referenceImages: ''
   })
 
   const customizationServices = [
@@ -22,7 +23,7 @@ const CustomizationPage = () => {
       id: 'wall-art',
       title: 'Custom Wall Art',
       description: 'Personalized paintings and artwork for your walls',
-      price: 'Starting from $150',
+      price: 'Starting from ₹150',
       features: ['Custom size', 'Personal style', 'Color matching', 'Frame included'],
       icon: Palette
     },
@@ -30,7 +31,7 @@ const CustomizationPage = () => {
       id: 'portrait',
       title: 'Custom Portraits',
       description: 'Hand-painted portraits from your photos',
-      price: 'Starting from $200',
+      price: 'Starting from ₹200',
       features: ['High quality', 'Multiple styles', 'Fast delivery', 'Digital preview'],
       icon: Users
     },
@@ -38,7 +39,7 @@ const CustomizationPage = () => {
       id: 'gift',
       title: 'Gift Customization',
       description: 'Personalized artwork for special occasions',
-      price: 'Starting from $100',
+      price: 'Starting from ₹100',
       features: ['Gift wrapping', 'Message included', 'Special packaging', 'Express delivery'],
       icon: Star
     },
@@ -46,7 +47,7 @@ const CustomizationPage = () => {
       id: 'corporate',
       title: 'Corporate Art',
       description: 'Custom artwork for offices and businesses',
-      price: 'Starting from $300',
+      price: 'Starting from ₹300',
       features: ['Brand colors', 'Large formats', 'Installation', 'Maintenance'],
       icon: CheckCircle
     }
@@ -60,14 +61,7 @@ const CustomizationPage = () => {
     }))
   }
 
-  const handleFileChange = (e) => {
-    setFormData(prev => ({
-      ...prev,
-      referenceImages: e.target.files[0]
-    }))
-  }
-
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     
     if (!user) {
@@ -75,9 +69,33 @@ const CustomizationPage = () => {
       return
     }
 
-    // Here you would typically send the data to your backend
+    toast.loading('Sending customization request...', { id: 'customization-request' })
+
+    const html = buildHtmlFromObject('New Customization Request', [
+      { label: 'Name', value: formData.name },
+      { label: 'Email', value: formData.email },
+      { label: 'Phone', value: formData.phone },
+      { label: 'Service Type', value: formData.serviceType || selectedService || 'Not specified' },
+      { label: 'Description', value: formData.description },
+      { label: 'Budget', value: formData.budget },
+      { label: 'Timeline', value: formData.timeline },
+      { label: 'Reference Links', value: formData.referenceImages || 'None provided' }
+    ])
+
+    const emailResult = await sendSupportEmail({
+      subject: `Customization Request - ${formData.name || 'New Client'}`,
+      html,
+      replyTo: formData.email
+    })
+
+    toast.dismiss('customization-request')
+
+    if (!emailResult.success) {
+      toast.error(emailResult.error || 'Failed to submit request. Please try again.')
+      return
+    }
+
     toast.success('Customization request submitted successfully!')
-    console.log('Customization request:', formData)
     
     // Reset form
     setFormData({
@@ -88,7 +106,7 @@ const CustomizationPage = () => {
       description: '',
       budget: '',
       timeline: '',
-      referenceImages: null
+      referenceImages: ''
     })
   }
 
@@ -267,26 +285,20 @@ const CustomizationPage = () => {
 
               <div className="mb-8">
                 <label htmlFor="referenceImages" className="block text-sm font-medium text-gray-700 mb-2">
-                  Reference Images
+                  Reference Image Links (Optional)
                 </label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-forest-green transition-colors">
-                  <input
-                    type="file"
-                    id="referenceImages"
-                    name="referenceImages"
-                    onChange={handleFileChange}
-                    accept="image/*"
-                    className="hidden"
-                  />
-                  <label
-                    htmlFor="referenceImages"
-                    className="cursor-pointer flex flex-col items-center space-y-2"
-                  >
-                    <Upload className="w-8 h-8 text-gray-400" />
-                    <span className="text-gray-600">Upload reference images (optional)</span>
-                    <span className="text-sm text-gray-500">PNG, JPG up to 10MB each</span>
-                  </label>
-                </div>
+                <textarea
+                  id="referenceImages"
+                  name="referenceImages"
+                  rows={4}
+                  value={formData.referenceImages}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-forest-green focus:border-transparent"
+                  placeholder="Paste Google Drive, Pinterest or Instagram links here (one per line)"
+                />
+                <p className="mt-2 text-sm text-gray-500">
+                  Include any publicly accessible inspiration links to help our artists understand your requirements.
+                </p>
               </div>
 
               <div className="text-center">

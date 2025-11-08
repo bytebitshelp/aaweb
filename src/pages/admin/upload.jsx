@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Upload, Image, X, CheckCircle, AlertCircle, Package, Ruler } from 'lucide-react'
+import { Upload, Link2, CheckCircle, AlertCircle, Package, Ruler } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import CategoryDropdown from '../../components/CategoryDropdown'
 import toast from 'react-hot-toast'
@@ -10,8 +10,7 @@ const UploadArtworkPage = () => {
   const { user } = useAuth()
   const [uploading, setUploading] = useState(false)
   const [uploadStatus, setUploadStatus] = useState(null) // 'success', 'error', null
-  const [selectedImages, setSelectedImages] = useState([])
-  const [imagePreviews, setImagePreviews] = useState([])
+  const [imageUrlsInput, setImageUrlsInput] = useState('')
 
   const {
     register,
@@ -29,69 +28,23 @@ const UploadArtworkPage = () => {
     { value: 'sold', label: 'Sold' }
   ]
 
-  const handleImageSelect = (event) => {
-    const files = Array.from(event.target.files)
-    if (files.length > 0) {
-      const newFiles = [...selectedImages, ...files].slice(0, 5) // Max 5 images
-      setSelectedImages(newFiles)
-      
-      // Create previews for new images
-      files.forEach(file => {
-        const reader = new FileReader()
-        reader.onload = (e) => {
-          setImagePreviews(prev => [...prev, e.target.result])
-        }
-        reader.readAsDataURL(file)
-      })
-    }
+  const parseImageUrls = (input) => {
+    if (!input) return []
+    return input
+      .split(/\r?\n|,/)
+      .map((url) => url.trim())
+      .filter(Boolean)
   }
 
-  const removeImage = (index) => {
-    setSelectedImages(prev => prev.filter((_, i) => i !== index))
-    setImagePreviews(prev => prev.filter((_, i) => i !== index))
-  }
-
-  const uploadImageToSupabase = async (file) => {
-    console.log('Processing image:', file.name, 'Size:', file.size)
-    
-    // Use base64 encoding for immediate upload without storage delays
-    // This ensures fast, reliable uploads
-    const base64Promise = new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        console.log('Image converted to base64:', file.name)
-        resolve(e.target.result)
-      }
-      reader.onerror = (error) => {
-        console.error('FileReader error:', error)
-        reject(error)
-      }
-      reader.readAsDataURL(file)
-    })
-
-    // Add timeout to prevent hanging
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Image conversion timeout')), 10000)
-    )
-
-    try {
-      const base64Url = await Promise.race([base64Promise, timeoutPromise])
-      console.log('Image processed successfully:', file.name)
-      return base64Url
-    } catch (error) {
-      console.error('Image processing error:', error)
-      throw error
-    }
-  }
+  const parsedImageUrls = useMemo(() => parseImageUrls(imageUrlsInput), [imageUrlsInput])
 
   const onSubmit = async (data) => {
     console.log('onSubmit function called!')
     console.log('Form data received:', data)
     
-    // Validate images are selected
-    if (selectedImages.length === 0) {
-      console.error('No images selected')
-      toast.error('Please select at least one image')
+    if (parsedImageUrls.length === 0) {
+      console.error('No image URLs provided')
+      toast.error('Please enter at least one image URL')
       setUploadStatus('error')
       return
     }
@@ -103,17 +56,12 @@ const UploadArtworkPage = () => {
       setUploadStatus(null)
       console.log('=== UPLOAD START ===')
       console.log('Form data:', data)
-      console.log('Selected images:', selectedImages.length)
-
-      console.log('Processing', selectedImages.length, 'images...')
+      console.log('Provided image URLs:', parsedImageUrls.length)
+      parsedImageUrls.forEach((url, index) => {
+        console.log(`  URL ${index + 1}:`, url)
+      })
       
-      // Create simple image references (not full base64 to avoid size issues)
-      const imageUrls = selectedImages.map((image, index) => `image-${Date.now()}-${index}.${image.name.split('.').pop()}`)
-      
-      console.log('All images processed successfully:', imageUrls.length)
-      
-      // Keep first image for backwards compatibility (image_url field)
-      const imageUrl = imageUrls.length > 0 ? imageUrls[0] : 'placeholder.jpg'
+      const imageUrl = parsedImageUrls[0] || null
 
       // Determine if it's an original artwork based on category
       const isOriginal = data.category === 'original'
@@ -129,7 +77,7 @@ const UploadArtworkPage = () => {
         is_original: isOriginal,
         status: data.availability_status === 'available' ? 'available' : 'sold',
         image_url: imageUrl, // Keep for backwards compatibility
-        image_urls: imageUrls.length > 0 ? imageUrls : null, // New array field
+        image_urls: parsedImageUrls.length > 0 ? parsedImageUrls : null,
         created_at: new Date().toISOString()
       }
 
@@ -169,8 +117,7 @@ const UploadArtworkPage = () => {
         
         setUploadStatus('success')
         reset()
-        setSelectedImages([])
-        setImagePreviews([])
+        setImageUrlsInput('')
         toast.success('Artwork uploaded successfully!')
         return
         
@@ -362,74 +309,47 @@ const UploadArtworkPage = () => {
                 )}
               </div>
 
-              {/* Image Upload */}
+              {/* Image URLs */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Upload Images * (Up to 5 images)
+                  Image URLs * (one per line)
                 </label>
-                
-                {imagePreviews.length === 0 ? (
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-forest-green transition-colors">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageSelect}
-                      className="hidden"
-                      id="image-upload"
-                      multiple
-                    />
-                    <label
-                      htmlFor="image-upload"
-                      className="cursor-pointer flex flex-col items-center space-y-4"
-                    >
-                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
-                        <Image className="w-8 h-8 text-gray-400" />
-                      </div>
-                      <div>
-                        <p className="text-lg font-medium text-gray-900">Click to upload images</p>
-                        <p className="text-sm text-gray-500">PNG, JPG, GIF up to 10MB each (max 5 images)</p>
-                      </div>
-                    </label>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {imagePreviews.map((preview, index) => (
-                      <div key={index} className="relative aspect-square">
-                        <img
-                          src={preview}
-                          alt={`Preview ${index + 1}`}
-                          className="w-full h-full object-cover rounded-lg"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeImage(index)}
-                          className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                    {imagePreviews.length < 5 && (
-                      <div className="border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center hover:border-forest-green transition-colors">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleImageSelect}
-                          className="hidden"
-                          id="image-upload-add"
-                          multiple
-                        />
-                        <label
-                          htmlFor="image-upload-add"
-                          className="cursor-pointer flex flex-col items-center space-y-2 p-4"
-                        >
-                          <Image className="w-8 h-8 text-gray-400" />
-                          <p className="text-xs text-gray-500 text-center">Add more</p>
-                        </label>
-                      </div>
-                    )}
-                  </div>
-                )}
+                <div className="space-y-3">
+                  <textarea
+                    rows={4}
+                    value={imageUrlsInput}
+                    onChange={(e) => setImageUrlsInput(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-forest-green focus:border-transparent"
+                    placeholder="https://example.com/image1.jpg&#10;https://example.com/image2.jpg"
+                  />
+                  <p className="text-xs text-gray-500 flex items-center space-x-2">
+                    <Link2 className="w-4 h-4" />
+                    <span>Paste one image URL per line. The first URL will be used as the primary image.</span>
+                  </p>
+                  {parsedImageUrls.length > 0 && (
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      {parsedImageUrls.map((url, index) => (
+                        <div key={url + index} className="space-y-2">
+                          <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
+                            <img
+                              src={url}
+                              alt={`Image ${index + 1}`}
+                            referrerPolicy="no-referrer"
+                            crossOrigin="anonymous"
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.target.src = '/placeholder-art.jpg'
+                              }}
+                            />
+                          </div>
+                          <p className="text-xs text-gray-600 break-all">
+                            {url}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Status Messages */}
@@ -458,7 +378,7 @@ const UploadArtworkPage = () => {
                 onClick={(e) => {
                   console.log('Button clicked')
                   console.log('Uploading state:', uploading)
-                  console.log('Selected images:', selectedImages.length)
+                  console.log('Image URLs provided:', parsedImageUrls.length)
                 }}
                 className="w-full btn-primary flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >

@@ -197,10 +197,28 @@ export const AuthProvider = ({ children }) => {
         console.error('Error fetching user profile:', error)
         // Don't show error toast for background profile fetch
       } else if (data) {
-        setUserProfile(data)
+        // Self-heal: if email is admin but role isn't, upgrade role
         try {
-          localStorage.setItem('user-profile', JSON.stringify(data))
-        } catch {}
+          const isAdminEmail = await checkAdminStatus(data.email)
+          if (isAdminEmail && data.role !== 'admin') {
+            const { data: updated, error: updateError } = await supabase
+              .from('users')
+              .update({ role: 'admin' })
+              .eq('user_id', userId)
+              .select('*')
+              .single()
+            if (!updateError && updated) {
+              setUserProfile(updated)
+              try { localStorage.setItem('user-profile', JSON.stringify(updated)) } catch {}
+              return
+            }
+          }
+        } catch (e) {
+          console.error('Error ensuring admin role:', e)
+        }
+
+        setUserProfile(data)
+        try { localStorage.setItem('user-profile', JSON.stringify(data)) } catch {}
       }
     } catch (error) {
       console.error('Error fetching user profile:', error)
@@ -209,15 +227,26 @@ export const AuthProvider = ({ children }) => {
 
   const checkAdminStatus = async (email) => {
     try {
-      // Check if email is the specific admin email
-      if (email === 'asadmohammed181105@gmail.com') {
+      if (!email) return false
+
+      // Normalize email
+      const normalizedEmail = String(email).trim().toLowerCase()
+
+      // Check env list VITE_ADMIN_EMAILS (comma-separated)
+      const envAdminsRaw = import.meta.env.VITE_ADMIN_EMAILS || ''
+      const envAdmins = envAdminsRaw
+        .split(',')
+        .map(e => e.trim().toLowerCase())
+        .filter(Boolean)
+
+      if (envAdmins.includes(normalizedEmail) || normalizedEmail === 'asadmohammed181105@gmail.com') {
         return true
       }
       
       const { data, error } = await supabase
         .from('admin_emails')
         .select('email, is_active')
-        .eq('email', email)
+        .eq('email', normalizedEmail)
         .eq('is_active', true)
         .single()
 
@@ -292,19 +321,18 @@ export const AuthProvider = ({ children }) => {
         setUser(data.user)
         setCartUser(data.user)
 
-        // Check if user exists in our users table, if not create profile (background)
+        // Ensure user profile exists and correct role is set
         const { data: existingUser } = await supabase
           .from('users')
           .select('*')
           .eq('user_id', data.user.id)
           .single()
 
+        // Check admin status based on email/admin_emails table
+        const shouldBeAdmin = await checkAdminStatus(email)
+
         if (!existingUser) {
-          // Check if user is admin
-          const isAdmin = await checkAdminStatus(email)
-          const userRole = isAdmin ? 'admin' : 'customer'
-          
-          // Create user profile
+          // Create user profile with correct role
           const { error: profileError } = await supabase
             .from('users')
             .insert([
@@ -312,13 +340,22 @@ export const AuthProvider = ({ children }) => {
                 user_id: data.user.id,
                 name: data.user.user_metadata?.name || data.user.email.split('@')[0],
                 email: data.user.email,
-                role: userRole,
+                role: shouldBeAdmin ? 'admin' : 'customer',
                 created_at: new Date().toISOString()
               }
             ])
 
           if (profileError) {
             console.error('Error creating user profile:', profileError)
+          }
+        } else if (shouldBeAdmin && existingUser.role !== 'admin') {
+          // Upgrade role to admin if necessary
+          const { error: updateError } = await supabase
+            .from('users')
+            .update({ role: 'admin' })
+            .eq('user_id', data.user.id)
+          if (updateError) {
+            console.error('Error updating user role to admin:', updateError)
           }
         }
 
@@ -329,7 +366,7 @@ export const AuthProvider = ({ children }) => {
             localStorage.setItem('sb-session', JSON.stringify(sessionData.session))
           } catch {}
           
-          // Fetch profile and wait for it
+          // Fetch updated profile and wait for it
           await fetchUserProfile(data.user.id)
           
           toast.success('Signed in successfully!')
@@ -428,7 +465,17 @@ export const AuthProvider = ({ children }) => {
   }
 
   const isAdmin = () => {
-    return userProfile?.role === 'admin'
+    if (userProfile?.role === 'admin') return true
+    const email = userProfile?.email || user?.email
+    const envAdminsRaw = import.meta.env.VITE_ADMIN_EMAILS || ''
+    const envAdmins = envAdminsRaw
+      .split(',')
+      .map(e => e.trim().toLowerCase())
+      .filter(Boolean)
+    const normalized = (email || '').trim().toLowerCase()
+    if (!normalized) return false
+    if (normalized === 'asadmohammed181105@gmail.com' || envAdmins.includes(normalized)) return true
+    return false
   }
 
   const isCustomer = () => {

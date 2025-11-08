@@ -81,6 +81,8 @@ const CartModal = ({ isOpen, onClose }) => {
                   <div className="w-20 h-20 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
                     <img
                       src={item.image_url || '/placeholder-art.jpg'}
+                      referrerPolicy="no-referrer"
+                      crossOrigin="anonymous"
                       alt={item.title}
                       className="w-full h-full object-cover"
                     />

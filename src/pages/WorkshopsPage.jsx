@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { Calendar, Clock, Users, MapPin, ArrowRight, Image as ImageIcon } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { sendSupportEmail, buildHtmlFromObject } from '../services/resendEmail'
 
 const WorkshopsPage = () => {
   const [upcomingWorkshops, setUpcomingWorkshops] = useState([])
@@ -122,9 +124,28 @@ const WorkshopsPage = () => {
     })
   }
 
-  const handleJoinWorkshop = (workshop) => {
-    // TODO: Implement workshop registration
-    console.log('Join workshop:', workshop)
+  const handleJoinWorkshop = async (workshop) => {
+    const toastId = `join-${workshop.id}`
+    toast.loading('Registering your interest...', { id: toastId })
+
+    const html = buildHtmlFromObject('Workshop Enquiry', [
+      { label: 'Workshop', value: workshop.name },
+      { label: 'Scheduled For', value: `${formatDate(workshop.date)} at ${formatTime(workshop.date)}` },
+      { label: 'Description', value: workshop.description }
+    ])
+
+    const emailResult = await sendSupportEmail({
+      subject: `Workshop enquiry - ${workshop.name}`,
+      html
+    })
+
+    toast.dismiss(toastId)
+
+    if (emailResult.success) {
+      toast.success('Thanks! We will contact you with workshop details soon.')
+    } else {
+      toast.error(emailResult.error || 'Unable to send your request. Please try again later.')
+    }
   }
 
   if (loading) {

@@ -4,6 +4,7 @@ import ArtworkCard from '../components/ArtworkCard'
 import FilterBar from '../components/FilterBar'
 import ProductPopup from '../components/ProductPopup'
 import { Loader2 } from 'lucide-react'
+import { normalizeArtworkMedia, getImageUrl } from '../lib/imageUtils'
 
 const ShopPage = () => {
   const [artworks, setArtworks] = useState([])
@@ -33,7 +34,16 @@ const ShopPage = () => {
         // Use mock data if Supabase is not configured
         setArtworks(getMockArtworks())
       } else {
-        setArtworks(data || [])
+        const processed = (data || []).map((artwork) => {
+          const normalizedMedia = normalizeArtworkMedia(artwork)
+          return {
+            ...artwork,
+            image_urls: normalizedMedia.image_urls,
+            image_url: normalizedMedia.image_url
+          }
+        })
+
+        setArtworks(processed)
       }
     } catch (error) {
       console.error('Error:', error)
@@ -44,7 +54,8 @@ const ShopPage = () => {
   }
 
   // Mock data for demonstration
-  const getMockArtworks = () => [
+  const getMockArtworks = () => {
+    const items = [
     {
       id: '1',
       artist_name: 'Sarah Johnson',
@@ -112,6 +123,13 @@ const ShopPage = () => {
       created_at: '2024-01-10T16:30:00Z'
     }
   ]
+
+    return items.map(item => ({
+      ...item,
+      image_urls: item.image_url ? [getImageUrl(item.image_url)] : [],
+      image_url: item.image_url ? getImageUrl(item.image_url) : null
+    }))
+  }
 
   // Get unique categories
   const categories = [...new Set(artworks.map(artwork => artwork.category))]

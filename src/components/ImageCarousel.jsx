@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { getImageUrl, getImageUrls, isVideoFile } from '../lib/imageUtils'
 
 const ImageCarousel = ({ images, alt = 'Product image' }) => {
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -24,21 +25,54 @@ const ImageCarousel = ({ images, alt = 'Product image' }) => {
     )
   }
 
-  const displayImages = Array.isArray(images) ? images : [images]
+  // Convert all media URLs to full accessible URLs
+  const displayImages = getImageUrls(images)
   const hasMultipleImages = displayImages.length > 1
+
+  // Check if current item is a video
+  const currentUrl = displayImages[currentIndex] || ''
+  const isVideo = isVideoFile(currentUrl)
 
   return (
     <div className="relative aspect-square overflow-hidden bg-gray-100 rounded-lg">
-      {/* Main Image */}
+      {/* Main Media */}
       <div className="relative w-full h-full">
-        <img
-          src={displayImages[currentIndex] || '/placeholder-art.jpg'}
-          alt={`${alt} ${currentIndex + 1}`}
-          className="w-full h-full object-cover transition-all duration-300"
-          onError={(e) => {
-            e.target.src = '/placeholder-art.jpg'
-          }}
-        />
+        {isVideo ? (
+          <video
+            src={currentUrl || '/placeholder-art.jpg'}
+            className="w-full h-full object-cover transition-all duration-300"
+            controls
+            muted
+            loop
+            playsInline
+            onError={(e) => {
+              console.error('Video failed to load:', currentUrl)
+              e.target.style.display = 'none'
+            }}
+          />
+        ) : (
+          <img
+            src={currentUrl || '/placeholder-art.jpg'}
+            alt={`${alt} ${currentIndex + 1}`}
+            referrerPolicy="no-referrer"
+            crossOrigin="anonymous"
+            className="w-full h-full object-cover transition-all duration-300"
+            onError={(e) => {
+              const failedUrl = displayImages[currentIndex]
+              console.error('Image failed to load:', failedUrl)
+              
+              // Check if it's a HEIC file
+              if (failedUrl && (failedUrl.includes('.heic') || failedUrl.includes('.HEIC'))) {
+                console.warn('HEIC file cannot be displayed in browser. Please re-upload as JPEG/PNG.')
+              }
+              
+              // Don't retry if already showing placeholder
+              if (e.target.src !== window.location.origin + '/placeholder-art.jpg') {
+                e.target.src = '/placeholder-art.jpg'
+              }
+            }}
+          />
+        )}
 
         {/* Navigation Arrows */}
         {hasMultipleImages && (

@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import ArtworkCard from '../components/ArtworkCard'
 import ProductPopup from '../components/ProductPopup'
 import { Loader2, ShoppingBag } from 'lucide-react'
+import { normalizeArtworkMedia } from '../lib/imageUtils'
 
 const CeramicArtPage = () => {
   const [artworks, setArtworks] = useState([])
@@ -27,7 +28,16 @@ const CeramicArtPage = () => {
         console.error('Error fetching ceramic artworks:', error)
         setArtworks([])
       } else {
-        setArtworks(data || [])
+        const processed = (data || []).map((artwork) => {
+          const normalizedMedia = normalizeArtworkMedia(artwork)
+          return {
+            ...artwork,
+            image_urls: normalizedMedia.image_urls,
+            image_url: normalizedMedia.image_url
+          }
+        })
+
+        setArtworks(processed)
       }
     } catch (error) {
       console.error('Error:', error)

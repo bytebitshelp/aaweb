@@ -4,6 +4,7 @@ import ArtworkCard from '../components/ArtworkCard'
 import ProductPopup from '../components/ProductPopup'
 import FilterBar from '../components/FilterBar'
 import { Loader2, Sparkles } from 'lucide-react'
+import { normalizeArtworkMedia, getImageUrl } from '../lib/imageUtils'
 
 const ResinArtPage = () => {
   const [artworks, setArtworks] = useState([])
@@ -31,7 +32,16 @@ const ResinArtPage = () => {
         console.error('Error fetching resin artworks:', error)
         setArtworks(getMockResinArtworks())
       } else {
-        setArtworks(data || [])
+        const processed = (data || []).map((artwork) => {
+          const normalizedMedia = normalizeArtworkMedia(artwork)
+          return {
+            ...artwork,
+            image_urls: normalizedMedia.image_urls,
+            image_url: normalizedMedia.image_url
+          }
+        })
+
+        setArtworks(processed)
       }
     } catch (error) {
       console.error('Error:', error)
@@ -41,7 +51,8 @@ const ResinArtPage = () => {
     }
   }
 
-  const getMockResinArtworks = () => [
+  const getMockResinArtworks = () => {
+    const items = [
     {
       id: '1',
       artist_name: 'Michael Chen',
@@ -109,6 +120,13 @@ const ResinArtPage = () => {
       created_at: '2024-01-01T14:10:00Z'
     }
   ]
+
+    return items.map(item => ({
+      ...item,
+      image_urls: item.image_url ? [getImageUrl(item.image_url)] : [],
+      image_url: item.image_url ? getImageUrl(item.image_url) : null
+    }))
+  }
 
   const categories = ['all'] // Only resin art category for this page
 

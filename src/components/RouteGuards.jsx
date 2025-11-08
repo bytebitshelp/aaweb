@@ -15,7 +15,7 @@ export const ProtectedRoute = () => {
 }
 
 export const AdminRoute = () => {
-  const { user, userProfile, loading } = useAuth()
+  const { user, loading, isAdmin } = useAuth()
   const location = useLocation()
 
   if (loading) return (
@@ -24,7 +24,8 @@ export const AdminRoute = () => {
     </div>
   )
   if (!user) return <Navigate to="/" state={{ from: location }} replace />
-  if (userProfile?.role !== 'admin') return <Navigate to="/" replace />
+  // Use centralized admin detection (role or email-based)
+  if (!isAdmin()) return <Navigate to="/" replace />
   return <Outlet />
 }
 

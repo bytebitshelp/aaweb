@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Supabase Storage Upload</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Test Supabase Storage Upload</h1>
+    <input type="file" id="fileInput" />
+    <button onclick="testUpload()">Test Upload</button>
+    <div id="result"></div>
+
+    <script>
+        const supabaseUrl = 'https://ibgztilnaecjexshxmrz.supabase.co'
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliZ3p0aWxuYWVjamV4c2h4bXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc2ODEzMTIsImV4cCI6MjA3MzI1NzMxMn0.BXVkSNLdZb6y6SyzBGIcr7MiFDsjUwY9LU01dJwmGRo'
+        
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey)
+        
+        async function testUpload() {
+            const fileInput = document.getElementById('fileInput')
+            const file = fileInput.files[0]
+            
+            if (!file) {
+                alert('Please select a file')
+                return
+            }
+            
+            const resultDiv = document.getElementById('result')
+            resultDiv.innerHTML = 'Testing...'
+            
+            try {
+                console.log('1. Testing bucket list...')
+                const { data: buckets, error: bucketError } = await supabase.storage.listBuckets()
+                console.log('Buckets:', buckets, 'Error:', bucketError)
+                resultDiv.innerHTML += '<br>Buckets: ' + JSON.stringify(buckets)
+                
+                console.log('2. Testing upload...')
+                const fileName = `test-${Date.now()}-${file.name}`
+                const filePath = `artworks/${fileName}`
+                
+                console.log('Uploading to:', filePath)
+                const { data, error } = await supabase.storage
+                    .from('artwork-images')
+                    .upload(filePath, file)
+                
+                if (error) {
+                    console.error('Upload error:', error)
+                    resultDiv.innerHTML += '<br>❌ Error: ' + error.message
+                } else {
+                    console.log('Upload success:', data)
+                    resultDiv.innerHTML += '<br>✅ Success: ' + JSON.stringify(data)
+                }
+            } catch (err) {
+                console.error('Exception:', err)
+                resultDiv.innerHTML += '<br>❌ Exception: ' + err.message
+            }
+        }
+    </script>
+</body>
+</html>
+

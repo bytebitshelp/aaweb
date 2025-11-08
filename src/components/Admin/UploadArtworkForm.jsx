@@ -1,21 +1,19 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase } from '../../lib/supabase'
-import { Upload, Image, X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
+import { Upload, Link2, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const UploadArtworkForm = () => {
   const [uploading, setUploading] = useState(false)
   const [uploadStatus, setUploadStatus] = useState(null)
-  const [selectedImage, setSelectedImage] = useState(null)
-  const [imagePreview, setImagePreview] = useState(null)
+  const [imageUrlsInput, setImageUrlsInput] = useState('')
 
   const {
     register,
     handleSubmit,
     formState: { errors },
-    reset,
-    watch
+    reset
   } = useForm()
 
   const categories = [
@@ -27,56 +25,23 @@ const UploadArtworkForm = () => {
     { value: 'ceramic', label: 'Ceramic Art' }
   ]
 
-  const handleImageSelect = (event) => {
-    const file = event.target.files[0]
-    if (file) {
-      setSelectedImage(file)
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        setImagePreview(e.target.result)
-      }
-      reader.readAsDataURL(file)
-    }
+  const parseImageUrls = (input) => {
+    if (!input) return []
+    return input
+      .split(/\r?\n|,/)
+      .map((url) => url.trim())
+      .filter(Boolean)
   }
 
-  const removeImage = () => {
-    setSelectedImage(null)
-    setImagePreview(null)
-  }
-
-  const uploadImageToSupabase = async (file) => {
-    try {
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
-      const filePath = `artworks/${fileName}`
-
-      const { data, error } = await supabase.storage
-        .from('artwork-images')
-        .upload(filePath, file)
-
-      if (error) {
-        throw error
-      }
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('artwork-images')
-        .getPublicUrl(filePath)
-
-      return publicUrl
-    } catch (error) {
-      console.error('Error uploading image:', error)
-      throw error
-    }
-  }
+  const parsedImageUrls = useMemo(() => parseImageUrls(imageUrlsInput), [imageUrlsInput])
 
   const onSubmit = async (data) => {
     try {
       setUploading(true)
       setUploadStatus(null)
 
-      let imageUrl = null
-      if (selectedImage) {
-        imageUrl = await uploadImageToSupabase(selectedImage)
+      if (parsedImageUrls.length === 0) {
+        throw new Error('Please provide at least one image URL')
       }
 
       // Map category values to match actual database constraint
@@ -98,7 +63,8 @@ const UploadArtworkForm = () => {
         quantity_available: parseInt(data.quantity_available),
         is_original: data.category === 'original',
         status: data.quantity_available > 0 ? 'available' : 'sold',
-        image_url: imageUrl,
+        image_url: parsedImageUrls[0] || null,
+        image_urls: parsedImageUrls,
         created_at: new Date().toISOString()
       }
 
@@ -112,8 +78,7 @@ const UploadArtworkForm = () => {
 
       setUploadStatus('success')
       reset()
-      setSelectedImage(null)
-      setImagePreview(null)
+      setImageUrlsInput('')
       toast.success('Artwork uploaded successfully!')
     } catch (error) {
       console.error('Error uploading artwork:', error)
@@ -248,50 +213,47 @@ const UploadArtworkForm = () => {
             )}
           </div>
 
-          {/* Image Upload */}
+          {/* Image URLs */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Upload Image *
+              Image URLs * (one per line)
             </label>
-            
-            {!imagePreview ? (
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-forest-green transition-colors">
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageSelect}
-                  className="hidden"
-                  id="image-upload"
-                />
-                <label
-                  htmlFor="image-upload"
-                  className="cursor-pointer flex flex-col items-center space-y-4"
-                >
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
-                    <Image className="w-8 h-8 text-gray-400" />
-                  </div>
-                  <div>
-                    <p className="text-lg font-medium text-gray-900">Click to upload image</p>
-                    <p className="text-sm text-gray-500">PNG, JPG, GIF up to 10MB</p>
-                  </div>
-                </label>
-              </div>
-            ) : (
-              <div className="relative">
-                <img
-                  src={imagePreview}
-                  alt="Preview"
-                  className="w-full h-64 object-cover rounded-lg"
-                />
-                <button
-                  type="button"
-                  onClick={removeImage}
-                  className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            )}
+            <div className="space-y-3">
+              <textarea
+                rows={4}
+                value={imageUrlsInput}
+                onChange={(e) => setImageUrlsInput(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-forest-green focus:border-transparent"
+                placeholder="https://example.com/image1.jpg&#10;https://example.com/image2.jpg"
+              />
+              <p className="text-xs text-gray-500 flex items-center space-x-2">
+                <Link2 className="w-4 h-4" />
+                <span>Paste one image URL per line. The first URL will be used as the primary image.</span>
+              </p>
+              {parsedImageUrls.length > 0 && (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {parsedImageUrls.map((url, index) => (
+                    <div key={url + index} className="space-y-2">
+                      <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
+                        <img
+                          src={url}
+                          alt={`Image ${index + 1}`}
+                          referrerPolicy="no-referrer"
+                          crossOrigin="anonymous"
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.target.src = '/placeholder-art.jpg'
+                          }}
+                        />
+                      </div>
+                      <p className="text-xs text-gray-600 break-all">
+                        {url}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Status Messages */}

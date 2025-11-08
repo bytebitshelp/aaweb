@@ -380,7 +380,7 @@ const AdminDashboard = () => {
                   <p className="text-gray-600 mt-1">Manage your art collection</p>
                 </div>
                 <button
-                  onClick={() => window.location.href = '/upload-artwork'}
+                  onClick={() => window.location.href = '/UploadArtworkPage'}
                   className="btn-forest-green flex items-center space-x-2"
                 >
                   <Plus className="w-4 h-4" />

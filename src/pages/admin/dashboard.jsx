@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
+import { getImageUrl, getImageUrls } from '../../lib/imageUtils'
 import { 
   LayoutDashboard, 
   ShoppingCart, 
@@ -24,6 +26,7 @@ import {
 import toast from 'react-hot-toast'
 
 const AdminDashboard = () => {
+  const navigate = useNavigate()
   const { userProfile, signIn, signInWithGoogle } = useAuth()
   const [showLogin, setShowLogin] = useState(false)
   const [loginData, setLoginData] = useState({ email: '', password: '' })
@@ -46,11 +49,23 @@ const AdminDashboard = () => {
   useEffect(() => {
     console.log('=== ADMIN DASHBOARD MOUNTED ===')
     console.log('User profile:', userProfile)
-    console.log('Starting to fetch data...')
     
-    // Always try to fetch data
-    fetchDashboardData()
-  }, [])
+    // Wait a bit for auth to initialize, then fetch data
+    const timer = setTimeout(() => {
+      console.log('Starting to fetch data...')
+      fetchDashboardData()
+    }, 100)
+    
+    return () => clearTimeout(timer)
+  }, [userProfile]) // Add userProfile as dependency to refetch when profile loads
+
+  // Refetch artworks when switching to artworks tab
+  useEffect(() => {
+    if (activeTab === 'artworks' && artworks.length === 0 && !loading) {
+      console.log('Artworks tab active but no artworks, fetching...')
+      fetchArtworks()
+    }
+  }, [activeTab])
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -164,50 +179,138 @@ const AdminDashboard = () => {
 
   const fetchArtworks = async () => {
     try {
-      console.log('Starting fetchArtworks...')
+      console.log('=== fetchArtworks START ===')
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ibgztilnaecjexshxmrz.supabase.co'
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliZ3p0aWxuYWVjamV4c2h4bXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc2ODEzMTIsImV4cCI6MjA3MzI1NzMxMn0.BXVkSNLdZb6y6SyzBGIcr7MiFDsjUwY9LU01dJwmGRo'
+      
+      console.log('Supabase URL:', supabaseUrl)
+      console.log('Has API Key:', !!supabaseKey)
       setLoading(true)
-      const { data, error } = await supabase
-        .from('artworks')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100)
 
-      console.log('Artworks query result:', { 
-        hasData: !!data, 
-        dataLength: data?.length,
-        error: error?.message || 'None',
-        errorCode: error?.code,
-        errorDetails: error?.details
+      // Try direct fetch first to see what error we get
+      console.log('Attempting direct fetch to Supabase...')
+      const fetchUrl = `${supabaseUrl}/rest/v1/artworks?select=*`
+      
+      const fetchPromise = fetch(fetchUrl, {
+        method: 'GET',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation'
+        }
       })
       
-      if (error) {
-        console.error('Error fetching artworks:', error)
-        console.error('Error details:', JSON.stringify(error, null, 2))
-        toast.error(`Failed to load artworks: ${error.message || error.code || 'Unknown error'}`)
+      const fetchWithTimeout = new Promise(async (resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Fetch timeout - Network request not completing'))
+        }, 10000)
+        
+        try {
+          const response = await fetchPromise
+          clearTimeout(timeout)
+          resolve(response)
+        } catch (err) {
+          clearTimeout(timeout)
+          reject(err)
+        }
+      })
+      
+      const response = await fetchWithTimeout
+      console.log('Fetch response status:', response.status, response.statusText)
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Fetch error response:', errorText)
+        throw new Error(`HTTP ${response.status}: ${errorText}`)
+      }
+      
+      const data = await response.json()
+      const error = null
+      
+      console.log('Direct fetch successful, data:', data)
+
+      console.log('Artworks query response:', {
+        hasData: !!data,
+        dataLength: data?.length || 0,
+        dataType: Array.isArray(data) ? 'array' : typeof data
+      })
+
+      // Handle null or undefined data
+      if (!data) {
+        console.warn('⚠️ Query returned null/undefined data')
         setArtworks([])
         setLoading(false)
         return
       }
-      
-      console.log('Artworks fetched:', data?.length || 0)
-      // Ensure image_urls is properly handled if it's a string
+
+      // Log raw data for debugging
+      if (data.length > 0) {
+        console.log('✅ Raw artwork data (first item):', data[0])
+      } else {
+        console.warn('⚠️ Query returned empty array')
+      }
+
+      // Process data
       const processedData = (data || []).map(artwork => {
-        // Handle image_urls if it's stored as a string instead of array
-        if (artwork.image_urls && typeof artwork.image_urls === 'string') {
-          try {
-            artwork.image_urls = JSON.parse(artwork.image_urls)
-          } catch (e) {
-            // If parsing fails, treat as single image
+        // Ensure artwork_id exists
+        if (!artwork.artwork_id && artwork.id) {
+          artwork.artwork_id = artwork.id
+        }
+        
+        // Handle image_urls - could be string, array, or null
+        if (artwork.image_urls) {
+          if (typeof artwork.image_urls === 'string') {
+            try {
+              artwork.image_urls = JSON.parse(artwork.image_urls)
+            } catch (e) {
+              // If parsing fails, treat as single URL string
+              artwork.image_urls = [artwork.image_urls]
+            }
+          } else if (!Array.isArray(artwork.image_urls)) {
             artwork.image_urls = [artwork.image_urls]
           }
         }
+        
+        // Fallback: use image_url if image_urls is empty
+        if ((!artwork.image_urls || artwork.image_urls.length === 0) && artwork.image_url) {
+          artwork.image_urls = [artwork.image_url]
+        }
+
+        // Ensure required fields have defaults
+        artwork.status = artwork.status || 'available'
+        artwork.quantity_available = artwork.quantity_available ?? 0
+        artwork.price = artwork.price || 0
+
         return artwork
       })
+      
+      console.log('✅ Processed artworks:', processedData.length)
+      console.log('✅ Setting artworks state with:', processedData.length, 'items')
+      
       setArtworks(processedData)
       setLoading(false)
+      
+      console.log('=== fetchArtworks COMPLETE ===')
     } catch (err) {
-      console.error('fetchArtworks exception:', err)
-      toast.error(`Failed to load artworks: ${err.message}`)
+      console.error('❌ fetchArtworks EXCEPTION:', err)
+      console.error('Exception details:', {
+        message: err.message,
+        stack: err.stack,
+        name: err.name
+      })
+      
+      if (err.message?.includes('timeout')) {
+        toast.error('Query timed out. This usually means:\n1. RLS policies are blocking the query\n2. Network connection issue\n3. Supabase service is down\n\nPlease check your browser console and network tab.')
+        console.error('💡 TROUBLESHOOTING:')
+        console.error('1. Open Network tab in DevTools and check if the request to Supabase is being made')
+        console.error('2. Check if you ran fix-rls-policies.sql in Supabase SQL Editor')
+        console.error('3. Verify your Supabase URL and API key are correct')
+        console.error('4. Try accessing Supabase dashboard to verify service is up')
+      } else {
+        toast.error(`Failed to load artworks: ${err.message}`)
+      }
+      
       setArtworks([])
       setLoading(false)
     }
@@ -245,19 +348,84 @@ const AdminDashboard = () => {
   const fetchStats = async () => {
     try {
       console.log('Starting fetchStats...')
-      // Simplified stats fetch
-      const [ordersResult, artworksResult, usersResult] = await Promise.all([
-        supabase.from('orders').select('*').limit(1000),
-        supabase.from('artworks').select('*').limit(1000),
-        supabase.from('users').select('*').limit(1000)
-      ])
+      
+      // Verify session (skip timeout for now, just log)
+      console.log('FetchStats - Checking session...')
+      let session, sessionError
+      try {
+        const { data: sessionData, error: sessError } = await supabase.auth.getSession()
+        session = sessionData?.session
+        sessionError = sessError
+      } catch (err) {
+        console.warn('Session check exception:', err)
+        sessionError = err
+        session = null
+      }
+      
+      console.log('FetchStats - Session check complete:', { 
+        hasSession: !!session, 
+        email: session?.user?.email,
+        sessionError: sessionError?.message || 'None'
+      })
+      
+      // Continue even if session check fails - we can still query public data
+      
+      // Run queries sequentially to identify which one hangs
+      console.log('FetchStats - Fetching orders...')
+      const ordersResult = await supabase
+        .from('orders')
+        .select('order_id, payment_status, total_amount, order_status')
+        .limit(1000)
+      console.log('FetchStats - Orders query complete:', {
+        hasData: !!ordersResult.data,
+        count: ordersResult.data?.length || 0,
+        error: ordersResult.error?.message || 'None'
+      })
+
+      console.log('FetchStats - Fetching artworks...')
+      let artworksResult = await supabase
+        .from('artworks')
+        .select('artwork_id')
+        .limit(1000)
+      console.log('FetchStats - Artworks query complete:', {
+        hasData: !!artworksResult.data,
+        count: artworksResult.data?.length || 0,
+        error: artworksResult.error?.message || 'None',
+        errorCode: artworksResult.error?.code
+      })
+
+      // If artworks query failed, try again with simpler query
+      if (artworksResult.error) {
+        console.warn('Artworks count query failed, retrying with minimal select...')
+        artworksResult = await supabase
+          .from('artworks')
+          .select('artwork_id', { count: 'exact', head: true })
+        console.log('Retry artworks result:', {
+          error: artworksResult.error?.message,
+          count: artworksResult.count
+        })
+      }
+
+      console.log('FetchStats - Fetching users...')
+      const usersResult = await supabase
+        .from('users')
+        .select('user_id')
+        .limit(1000)
+      console.log('FetchStats - Users query complete:', {
+        hasData: !!usersResult.data,
+        count: usersResult.data?.length || 0,
+        error: usersResult.error?.message || 'None'
+      })
 
       console.log('Stats query results:', {
         ordersError: ordersResult.error?.message || 'None',
-        artworksError: artworksResult.error?.message || 'None',
-        usersError: usersResult.error?.message || 'None',
+        ordersErrorCode: ordersResult.error?.code,
         ordersCount: ordersResult.data?.length || 0,
-        artworksCount: artworksResult.data?.length || 0,
+        artworksError: artworksResult.error?.message || 'None',
+        artworksErrorCode: artworksResult.error?.code,
+        artworksCount: artworksResult.data?.length || artworksResult.count || 0,
+        usersError: usersResult.error?.message || 'None',
+        usersErrorCode: usersResult.error?.code,
         usersCount: usersResult.data?.length || 0
       })
 
@@ -273,18 +441,26 @@ const AdminDashboard = () => {
         order.payment_status === 'Paid' || order.payment_status === 'paid'
       ).length
 
+      const artworksCount = artworksResult.data?.length || artworksResult.count || 0
+
       setStats({
         totalOrders: ordersData.length,
         totalRevenue,
-        totalArtworks: artworksResult.data?.length || 0,
+        totalArtworks: artworksCount,
         totalUsers: usersResult.data?.length || 0,
         pendingOrders,
         paidOrders
       })
       
-      console.log('Stats loaded successfully')
+      console.log('Stats loaded successfully:', {
+        totalArtworks: artworksCount,
+        totalOrders: ordersData.length,
+        totalUsers: usersResult.data?.length || 0
+      })
     } catch (err) {
       console.error('fetchStats exception:', err)
+      console.error('Exception details:', JSON.stringify(err, null, 2))
+      console.error('Exception stack:', err.stack)
       // Set default stats on error
       setStats({
         totalOrders: 0,
@@ -694,7 +870,7 @@ const AdminDashboard = () => {
                   <p className="text-gray-600 mt-1">Manage your art collection</p>
                 </div>
                 <button
-                  onClick={() => window.location.href = '/admin/upload'}
+                  onClick={() => navigate('/admin/upload')}
                   className="btn-forest-green flex items-center space-x-2"
                 >
                   <Plus className="w-4 h-4" />
@@ -729,35 +905,58 @@ const AdminDashboard = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {loading && artworks.length === 0 ? (
+                    {loading ? (
                       <tr>
                         <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
-                          Loading artworks...
+                          <div className="flex items-center justify-center">
+                            <div className="w-8 h-8 border-2 border-gray-300 border-t-forest-green rounded-full animate-spin mr-3"></div>
+                            Loading artworks...
+                          </div>
                         </td>
                       </tr>
                     ) : artworks.length === 0 ? (
                       <tr>
                         <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
-                          No artworks found. Click "Add Artwork" to create your first artwork.
+                          <div className="space-y-3">
+                            <p>No artworks found.</p>
+                            <button
+                              onClick={() => {
+                                console.log('Manual refresh triggered, current artworks:', artworks.length)
+                                fetchArtworks()
+                              }}
+                              className="text-forest-green hover:underline"
+                            >
+                              Click here to refresh
+                            </button>
+                            <p className="text-sm">or click "Add Artwork" to create your first artwork.</p>
+                          </div>
                         </td>
                       </tr>
                     ) : (
-                      artworks.map((artwork) => (
+                      artworks.map((artwork) => {
+                        console.log('Rendering artwork:', artwork.artwork_id, artwork.title)
+                        return (
                       <tr key={artwork.artwork_id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
                             <div className="w-12 h-12 bg-gray-200 rounded-lg mr-4 flex items-center justify-center">
                               {artwork.image_urls && artwork.image_urls.length > 0 ? (
                                 <img 
-                                  src={artwork.image_urls[0]} 
+                                  src={getImageUrl(artwork.image_urls[0])} 
                                   alt={artwork.title}
                                   className="w-full h-full object-cover rounded-lg"
+                                  onError={(e) => {
+                                    e.target.src = '/placeholder-art.jpg'
+                                  }}
                                 />
                               ) : artwork.image_url ? (
                                 <img 
-                                  src={artwork.image_url} 
+                                  src={getImageUrl(artwork.image_url)} 
                                   alt={artwork.title}
                                   className="w-full h-full object-cover rounded-lg"
+                                  onError={(e) => {
+                                    e.target.src = '/placeholder-art.jpg'
+                                  }}
                                 />
                               ) : (
                                 <Palette className="w-6 h-6 text-gray-400" />
@@ -826,7 +1025,8 @@ const AdminDashboard = () => {
                           </div>
                         </td>
                       </tr>
-                      ))
+                      )
+                      })
                     )}
                   </tbody>
                 </table>
@@ -945,7 +1145,7 @@ const AdminDashboard = () => {
                     <span className="text-sm font-medium text-gray-900">View Orders</span>
                   </button>
                   <button
-                    onClick={() => window.location.href = '/admin/upload'}
+                    onClick={() => navigate('/admin/upload')}
                     className="w-full flex items-center space-x-3 p-3 text-left bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
                   >
                     <Plus className="w-5 h-5 text-forest-green" />
