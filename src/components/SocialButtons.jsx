@@ -2,7 +2,7 @@ import { Instagram, MessageCircle } from 'lucide-react'
 
 const SocialButtons = () => {
   const handleInstagramClick = () => {
-    window.open('https://instagram.com/artyaffairs', '_blank', 'noopener,noreferrer')
+    window.open('https://www.instagram.com/artyaffairs', '_blank', 'noopener,noreferrer')
   }
 
   const handleWhatsAppClick = () => {

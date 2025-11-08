@@ -41,7 +41,7 @@ const ProductPopup = ({ product, isOpen, onClose }) => {
   }
 
   const handleBuyNow = () => {
-    window.open('https://www.instagram.com/arty.affairs/', '_blank', 'noopener,noreferrer')
+    window.open('https://www.instagram.com/artyaffairs', '_blank', 'noopener,noreferrer')
     onClose()
   }
 
