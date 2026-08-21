@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useAuth } from '../../contexts/AuthContext'
+import BrandLogo from '../BrandLogo'
 import { Eye, EyeOff, Loader2, LogIn } from 'lucide-react'
 
 const LoginForm = ({ onToggleMode }) => {
@@ -25,9 +26,7 @@ const LoginForm = ({ onToggleMode }) => {
   return (
     <div className="bg-white rounded-lg shadow-lg p-8 w-full max-w-md mx-auto">
       <div className="text-center mb-8">
-        <div className="w-16 h-16 bg-forest-green bg-opacity-10 rounded-full flex items-center justify-center mx-auto mb-4">
-          <LogIn className="w-8 h-8 text-forest-green" />
-        </div>
+        <BrandLogo className="h-20 w-20 mx-auto mb-4" rounded="rounded-xl" />
         <h2 className="text-2xl font-bold text-gray-900">Welcome Back</h2>
         <p className="text-gray-600 mt-2">Sign in to your account</p>
       </div>
@@ -78,6 +77,11 @@ const LoginForm = ({ onToggleMode }) => {
           {errors.password && (
             <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>
           )}
+          <div className="mt-2 text-right">
+            <a href="/forgot-password" className="text-sm text-forest-green hover:underline">
+              Forgot password?
+            </a>
+          </div>
         </div>
 
         <button

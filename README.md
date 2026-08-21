@@ -1,240 +1,72 @@
-# Arty Affairs - Premium E-commerce Art Platform
+# Arty Affairs
 
-A modern, responsive e-commerce website where artists can showcase and sell their artworks, featuring a clean Forest Green and White theme with elegant design.
+Vite + React shop for original art, workshops, and interiors. Data lives in Supabase. Checkout uses Razorpay. Enquiry emails use Resend. Deploy on Vercel.
 
-## Features
+## Local development
 
-### 🎨 **Core Functionality**
-- **Landing Page** with video background and hero section
-- **Shop Page** with filtering and sorting capabilities
-- **Category Pages**: Originals, Resin Art, Giftables, Bouquets
-- **Workshops Page** with upcoming and previous workshops
-- **Interior Design Services** with project showcases
-- **Artwork Upload System** for artists to add their work
-
-### 🛠 **Technical Features**
-- **Responsive Design** optimized for desktop and mobile
-- **Modern UI/UX** with smooth animations and hover effects
-- **Image Optimization** with lazy loading
-- **SEO-friendly** with proper meta tags
-- **Accessibility Features** for better user experience
-- **Performance Optimized** with efficient code structure
-
-### 🎯 **Design System**
-- **Color Scheme**: Forest Green (#228B22) and White (#FFFFFF)
-- **Typography**: Inter font family with clean, modern styling
-- **Components**: Reusable UI components with consistent styling
-- **Animations**: Smooth transitions and hover effects
-
-## Tech Stack
-
-- **Frontend**: React 18 with Vite
-- **Styling**: Tailwind CSS
-- **Routing**: React Router DOM
-- **Backend**: Supabase (Database & Storage)
-- **Forms**: React Hook Form
-- **Icons**: Lucide React
-- **Deployment**: Vercel/Netlify ready
-
-## Quick Start
-
-### Prerequisites
-- Node.js (v16 or higher)
-- npm or yarn
-- Supabase account (for backend)
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd arty-affairs
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Set up environment variables**
-   ```bash
-   cp env.example .env
-   ```
-   
-   Fill in your Supabase credentials:
-   ```env
-   VITE_SUPABASE_URL=your-supabase-project-url
-   VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
-   ```
-
-4. **Set up Supabase Database**
-   
-   Create the following tables in your Supabase project:
-
-   **artworks table:**
-   ```sql
-   CREATE TABLE artworks (
-     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-     artist_name TEXT NOT NULL,
-     title TEXT NOT NULL,
-     category TEXT NOT NULL CHECK (category IN ('original', 'resin_art', 'giftable', 'bouquet')),
-     description TEXT NOT NULL,
-     price DECIMAL(10,2) NOT NULL,
-     image_url TEXT,
-     availability_status TEXT NOT NULL CHECK (availability_status IN ('available', 'sold')),
-     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-   );
-   ```
-
-   **workshops table:**
-   ```sql
-   CREATE TABLE workshops (
-     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-     name TEXT NOT NULL,
-     description TEXT NOT NULL,
-     date TIMESTAMP WITH TIME ZONE NOT NULL,
-     is_upcoming BOOLEAN DEFAULT true,
-     image_url TEXT,
-     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-   );
-   ```
-
-   **interior_design_projects table:**
-   ```sql
-   CREATE TABLE interior_design_projects (
-     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-     title TEXT NOT NULL,
-     description TEXT NOT NULL,
-     case_study TEXT NOT NULL,
-     image_urls TEXT[],
-     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-   );
-   ```
-
-   **Create storage bucket for images:**
-   ```sql
-   INSERT INTO storage.buckets (id, name, public) VALUES ('artwork-images', 'artwork-images', true);
-   ```
-
-5. **Start the development server**
-   ```bash
-   npm run dev
-   ```
-
-6. **Open your browser**
-   Navigate to `http://localhost:3000`
-
-## Project Structure
-
-```
-src/
-├── components/          # Reusable UI components
-│   ├── Layout.jsx      # Main layout with navigation
-│   ├── ArtworkCard.jsx # Artwork display component
-│   └── FilterBar.jsx   # Filtering and sorting
-├── pages/              # Page components
-│   ├── LandingPage.jsx
-│   ├── ShopPage.jsx
-│   ├── OriginalsPage.jsx
-│   ├── ResinArtPage.jsx
-│   ├── GiftablesPage.jsx
-│   ├── BouquetsPage.jsx
-│   ├── WorkshopsPage.jsx
-│   ├── InteriorDesignPage.jsx
-│   └── UploadArtworkPage.jsx
-├── lib/                # Utility functions
-│   └── supabase.js     # Supabase configuration
-├── App.jsx             # Main app component
-├── main.jsx            # Entry point
-└── index.css           # Global styles
+```bash
+npm install
+cp .env.example .env
+npm run dev
 ```
 
-## Features Overview
+Open `http://localhost:3000`. The app expects a `.env` file (see `.env.example`).
 
-### 🏠 **Landing Page**
-- Full-screen video background
-- Hero section with call-to-action buttons
-- Feature highlights section
-- Responsive design for all devices
+## Deploy on Vercel
 
-### 🛍️ **Shop Page**
-- Grid/list view toggle
-- Category filtering
-- Price and date sorting
-- Search functionality
-- Product cards with hover effects
+1. Push this repo to GitHub.
+2. In [Vercel](https://vercel.com) → **Add New Project** → import the repo.
+3. Framework should be **Vite**. Build command `npm run build`, output `dist`.
+4. Add environment variables (Project → Settings → Environment Variables) for **Production**, **Preview**, and **Development**.
+5. Deploy. After the first deploy, copy the URL into `VITE_SITE_URL` and redeploy so Google auth redirects to the live domain.
 
-### 📱 **Responsive Design**
-- Mobile-first approach
-- Optimized for tablets and desktops
-- Touch-friendly interface
-- Fast loading times
+Client `VITE_*` values are baked in at **build** time. If you change them, trigger a new deployment.
 
-### 🎨 **Artist Features**
-- Easy artwork upload with image preview
-- Category selection (Original, Resin Art, Giftable, Bouquet)
-- Price and availability management
-- Image optimization and storage
+### Environment variables
 
-### 🎓 **Workshop Management**
-- Upcoming workshops display
-- Previous workshops gallery
-- Registration functionality
-- Workshop details and scheduling
+| Name | Where | Purpose |
+| --- | --- | --- |
+| `VITE_SUPABASE_URL` | Vercel + local `.env` | Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` | Vercel + local `.env` | Supabase anon/public key |
+| `VITE_SITE_URL` | Vercel | Live site URL, no trailing slash (Google OAuth redirect) |
+| `VITE_RAZORPAY_KEY_ID` | Vercel + local `.env` | Razorpay **key id** (public) |
+| `VITE_ADMIN_EMAILS` | Vercel + local `.env` | Comma-separated admin logins |
+| `VITE_ENQUIRY_EMAIL` | optional | Shown as enquiry destination in the client |
+| `VITE_INSTAGRAM_URL` | optional | Footer Instagram link |
+| `RAZORPAY_KEY_ID` | Vercel only | Same key id as above, for `/api/create-order` |
+| `RAZORPAY_KEY_SECRET` | Vercel only | Razorpay secret — never prefix with `VITE_` |
+| `RESEND_API_KEY` | Vercel only | Sends workshop/order emails |
+| `RESEND_FROM_EMAIL` | Vercel only | Must be a verified Resend sender |
+| `ENQUIRY_EMAIL` | Vercel only | Inbox for enquiries and new-order alerts |
 
-## Customization
+Checkout and emails will fail until Razorpay and Resend secrets are set on Vercel. The rest of the site still works.
 
-### Colors
-The theme uses Forest Green (#228B22) and White (#FFFFFF). To change colors:
+## After deploy: Supabase
 
-1. Update `tailwind.config.js`:
-   ```js
-   colors: {
-     'forest-green': '#your-color',
-     'white': '#your-color',
-   }
-   ```
+In **Authentication → URL configuration**:
 
-2. Update CSS variables in `src/index.css`
+- Site URL: `https://your-app.vercel.app`
+- Redirect URLs: `https://your-app.vercel.app/**` and `http://localhost:3000/**`
 
-### Content
-- Replace placeholder images with your own
-- Update artist information and descriptions
-- Customize workshop schedules and content
-- Modify interior design project showcases
+Enable **Email** (and **Google** if you use it). For Google, set the same callback in Google Cloud: `https://<project>.supabase.co/auth/v1/callback`.
 
-## Deployment
+Run `supabase-admin-policies.sql` in the SQL editor if admins cannot create/update artworks, workshops, or orders.
 
-### Vercel (Recommended)
-1. Push code to GitHub
-2. Connect repository to Vercel
-3. Add environment variables in Vercel dashboard
-4. Deploy automatically
+Storage: public bucket for artwork images if you upload files (the current admin upload uses image URLs).
 
-### Netlify
-1. Build the project: `npm run build`
-2. Deploy the `dist` folder to Netlify
-3. Add environment variables in Netlify dashboard
+## After deploy: Razorpay
 
-## Contributing
+1. Create a Razorpay account and get Key ID + Key Secret (test first).
+2. Set `VITE_RAZORPAY_KEY_ID`, `RAZORPAY_KEY_ID`, and `RAZORPAY_KEY_SECRET` on Vercel.
+3. Checkout calls `/api/create-order` and `/api/verify-payment` (Vercel serverless functions in `api/`).
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Commit changes: `git commit -m 'Add feature'`
-4. Push to branch: `git push origin feature-name`
-5. Submit a pull request
+Local `vite` preview does **not** run those API routes. Use `vercel dev` if you need payments locally.
 
-## Support
+## After deploy: Resend
 
-For support and questions:
-- Create an issue in the repository
-- Contact: info@artyaffairs.com
+1. Create an API key and verify a sending domain (or use `onboarding@resend.dev` for tests).
+2. Set `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, and `ENQUIRY_EMAIL`.
 
-## License
+## Admin
 
-This project is licensed under the MIT License.
-
----
-
-**Arty Affairs** - Where Art Meets Passion 🎨
+Sign in with an email listed in `VITE_ADMIN_EMAILS`. Admin routes: `/admin-dashboard` (artworks, workshops, orders) and `/admin/upload`.

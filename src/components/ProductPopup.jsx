@@ -1,6 +1,8 @@
-import { X, ShoppingCart, Package, Ruler, DollarSign, CreditCard } from 'lucide-react'
+import { useEffect } from 'react'
+import { X, ShoppingCart, Package, Ruler, DollarSign, Heart } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useCartStore } from '../store/cartStore'
+import { useWishlistStore } from '../store/wishlistStore'
 import toast from 'react-hot-toast'
 import { getImageUrl, getImageUrls, isVideoFile, PLACEHOLDER_IMAGE } from '../lib/imageUtils'
 import ImageCarousel from './ImageCarousel'
@@ -8,6 +10,20 @@ import ImageCarousel from './ImageCarousel'
 const ProductPopup = ({ product, isOpen, onClose }) => {
   const { user } = useAuth()
   const { addItem } = useCartStore()
+  const { toggleItem, isInWishlist } = useWishlistStore()
+
+  useEffect(() => {
+    if (!isOpen) return
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = ''
+    }
+  }, [isOpen, onClose])
 
   if (!isOpen || !product) return null
 
@@ -38,12 +54,10 @@ const ProductPopup = ({ product, isOpen, onClose }) => {
     }
 
     await addItem(product, 1)
-  }
-
-  const handleBuyNow = () => {
-    window.open('https://www.instagram.com/artyaffairs', '_blank', 'noopener,noreferrer')
     onClose()
   }
+
+  const saved = isInWishlist(product.artwork_id)
 
 
   return (
@@ -185,11 +199,11 @@ const ProductPopup = ({ product, isOpen, onClose }) => {
                     </button>
                     
                     <button
-                      onClick={handleBuyNow}
-                      className="flex-1 bg-forest-green hover:bg-forest-green-dark text-white px-6 py-3 rounded-lg font-semibold transition-colors flex items-center justify-center space-x-2"
+                      onClick={() => toggleItem(product)}
+                      className="flex-1 btn-secondary flex items-center justify-center space-x-2"
                     >
-                      <CreditCard className="w-5 h-5" />
-                      <span>Buy on Instagram</span>
+                      <Heart className={`w-5 h-5 ${saved ? 'fill-red-500 text-red-500' : ''}`} />
+                      <span>{saved ? 'Saved' : 'Save'}</span>
                     </button>
                   </div>
                 ) : (

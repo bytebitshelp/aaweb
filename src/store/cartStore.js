@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { supabase } from '../lib/supabase'
+import { isAdminEmail } from '../lib/admin'
 import { getImageUrl, getImageUrls, PLACEHOLDER_IMAGE } from '../lib/imageUtils'
 import toast from 'react-hot-toast'
 
@@ -41,8 +42,7 @@ export const useCartStore = create(
           // If user doesn't exist (404 or no rows), create profile
           if (!existingUser || checkError?.code === 'PGRST116') {
             // Determine if admin
-            const isAdminEmail = userEmail === 'asadmohammed181105@gmail.com'
-            const userRole = isAdminEmail ? 'admin' : 'customer'
+            const userRole = isAdminEmail(userEmail) ? 'admin' : 'customer'
             
             const { error: insertError } = await supabase
               .from('users')

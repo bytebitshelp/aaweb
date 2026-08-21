@@ -1,13 +1,12 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../contexts/AuthContext'
+import { isAdminEmail } from '../lib/admin'
 import { supabase } from '../lib/supabase'
 import { Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const AuthCallback = () => {
   const navigate = useNavigate()
-  const { isAdmin } = useAuth()
 
   useEffect(() => {
     const handleAuthCallback = async () => {
@@ -24,16 +23,8 @@ const AuthCallback = () => {
         if (data.session?.user) {
           const user = data.session.user
           const normalizedEmail = String(user.email || '').trim().toLowerCase()
-
-          // Determine admin status using hardcoded email, admin_emails table, and VITE_ADMIN_EMAILS
-          const envAdminsRaw = import.meta.env.VITE_ADMIN_EMAILS || ''
-          const envAdmins = envAdminsRaw
-            .split(',')
-            .map(e => e.trim().toLowerCase())
-            .filter(Boolean)
-
-          let isAdminEmail = normalizedEmail === 'asadmohammed181105@gmail.com' || envAdmins.includes(normalizedEmail)
-          if (!isAdminEmail) {
+          let isAdminUser = isAdminEmail(normalizedEmail)
+          if (!isAdminUser) {
             try {
               const { data: adminEmail, error: adminCheckError } = await supabase
                 .from('admin_emails')
@@ -41,7 +32,7 @@ const AuthCallback = () => {
                 .eq('email', normalizedEmail)
                 .eq('is_active', true)
                 .single()
-              if (!adminCheckError && adminEmail) isAdminEmail = true
+              if (!adminCheckError && adminEmail) isAdminUser = true
             } catch {}
           }
 
@@ -61,14 +52,14 @@ const AuthCallback = () => {
                   user_id: user.id,
                   name: user.user_metadata?.full_name || user.user_metadata?.name || normalizedEmail.split('@')[0],
                   email: normalizedEmail,
-                  role: isAdminEmail ? 'admin' : 'customer',
+                  role: isAdminUser ? 'admin' : 'customer',
                   created_at: new Date().toISOString()
                 }
               ])
             if (profileError && profileError.code !== '23505') {
               console.error('Error creating user profile:', profileError)
             }
-          } else if (existingProfile && isAdminEmail && existingProfile.role !== 'admin') {
+          } else if (existingProfile && isAdminUser && existingProfile.role !== 'admin') {
             // Upgrade role to admin if needed
             const { error: updateError } = await supabase
               .from('users')
@@ -97,7 +88,7 @@ const AuthCallback = () => {
           } catch {}
 
           // Redirect immediately based on admin status
-          if (isAdminEmail) {
+          if (isAdminUser) {
             window.location.replace('/admin-dashboard')
           } else {
             window.location.replace('/')
@@ -111,14 +102,13 @@ const AuthCallback = () => {
     }
 
     handleAuthCallback()
-  }, [navigate, isAdmin])
+  }, [navigate])
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="text-center">
-        <div className="w-16 h-16 bg-forest-green bg-opacity-10 rounded-full flex items-center justify-center mx-auto mb-6">
-          <Loader2 className="w-8 h-8 text-forest-green animate-spin" />
-        </div>
+        <img src="/logo.jpg" alt="Arty Affairs" className="w-16 h-16 object-cover rounded-xl mx-auto mb-6" />
+        <Loader2 className="w-8 h-8 text-forest-green animate-spin mx-auto mb-4" />
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Completing Sign In</h2>
         <p className="text-gray-600">Please wait while we set up your account...</p>
       </div>

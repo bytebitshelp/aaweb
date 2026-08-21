@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { fetchPublicWorkshops } from '../lib/supabase'
 import { Calendar, Clock, Users, MapPin, ArrowRight, Image as ImageIcon } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { sendSupportEmail, buildHtmlFromObject } from '../services/resendEmail'
@@ -17,93 +17,22 @@ const WorkshopsPage = () => {
     try {
       setLoading(true)
       
-      // Fetch upcoming workshops
-      const { data: upcoming, error: upcomingError } = await supabase
-        .from('workshops')
-        .select('*')
-        .eq('is_upcoming', true)
-        .order('date', { ascending: true })
-
-      // Fetch previous workshops
-      const { data: previous, error: previousError } = await supabase
-        .from('workshops')
-        .select('*')
-        .eq('is_upcoming', false)
-        .order('date', { ascending: false })
-
-      if (upcomingError || previousError) {
-        console.error('Error fetching workshops:', upcomingError || previousError)
-        const mockData = getMockWorkshops()
-        setUpcomingWorkshops(mockData.upcoming)
-        setPreviousWorkshops(mockData.previous)
-      } else {
-        setUpcomingWorkshops(upcoming || [])
-        setPreviousWorkshops(previous || [])
-      }
+      const data = await fetchPublicWorkshops()
+      const list = data || []
+      setUpcomingWorkshops(
+        list.filter((item) => item.is_upcoming).sort((a, b) => new Date(a.date) - new Date(b.date))
+      )
+      setPreviousWorkshops(
+        list.filter((item) => !item.is_upcoming).sort((a, b) => new Date(b.date) - new Date(a.date))
+      )
     } catch (error) {
       console.error('Error:', error)
-      const mockData = getMockWorkshops()
-      setUpcomingWorkshops(mockData.upcoming)
-      setPreviousWorkshops(mockData.previous)
+        setUpcomingWorkshops([])
+        setPreviousWorkshops([])
     } finally {
       setLoading(false)
     }
   }
-
-  const getMockWorkshops = () => ({
-    upcoming: [
-      {
-        id: '1',
-        name: 'Watercolor Painting for Beginners',
-        description: 'Learn the basics of watercolor painting with professional artist Sarah Johnson. Perfect for beginners who want to explore this beautiful medium.',
-        date: '2024-02-15T10:00:00Z',
-        is_upcoming: true,
-        image_url: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=500&h=300&fit=crop'
-      },
-      {
-        id: '2',
-        name: 'Resin Art Masterclass',
-        description: 'Advanced techniques in resin art with Michael Chen. Learn to create stunning pieces with metallic accents and unique textures.',
-        date: '2024-02-22T14:00:00Z',
-        is_upcoming: true,
-        image_url: 'https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?w=500&h=300&fit=crop'
-      },
-      {
-        id: '3',
-        name: 'Abstract Expressionism Workshop',
-        description: 'Explore abstract painting techniques with Lisa Wang. Learn to express emotions through color, texture, and composition.',
-        date: '2024-03-01T11:00:00Z',
-        is_upcoming: true,
-        image_url: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=500&h=300&fit=crop'
-      }
-    ],
-    previous: [
-      {
-        id: '4',
-        name: 'Oil Painting Fundamentals',
-        description: 'Master the basics of oil painting with professional techniques.',
-        date: '2024-01-20T10:00:00Z',
-        is_upcoming: false,
-        image_url: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=500&h=300&fit=crop'
-      },
-      {
-        id: '5',
-        name: 'Digital Art Creation',
-        description: 'Learn digital art techniques using modern software and tablets.',
-        date: '2024-01-13T14:00:00Z',
-        is_upcoming: false,
-        image_url: 'https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?w=500&h=300&fit=crop'
-      },
-      {
-        id: '6',
-        name: 'Portrait Drawing Workshop',
-        description: 'Develop your portrait drawing skills with professional guidance.',
-        date: '2024-01-06T11:00:00Z',
-        is_upcoming: false,
-        image_url: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=500&h=300&fit=crop'
-      }
-    ]
-  })
 
   const formatDate = (dateString) => {
     const date = new Date(dateString)

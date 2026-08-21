@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useCartStore } from '../store/cartStore'
+import { isAdminEmail } from '../lib/admin'
 import toast from 'react-hot-toast'
 
 const AuthContext = createContext({
@@ -28,9 +28,8 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [userProfile, setUserProfile] = useState(null)
-  const [initialized, setInitialized] = useState(false)
   const { setUser: setCartUser } = useCartStore()
 
   useEffect(() => {
@@ -39,13 +38,6 @@ export const AuthProvider = ({ children }) => {
     // Get initial session
     const initializeAuth = async () => {
       try {
-        // Set initialized immediately to unblock UI
-        if (mounted) {
-          setInitialized(true)
-        }
-
-        // Supabase handles session persistence internally via localStorage
-        // We'll verify the session with Supabase, but can use cached data for initial render
         try {
           const cachedSessionRaw = localStorage.getItem('sb-session')
           if (cachedSessionRaw && mounted) {
@@ -74,13 +66,18 @@ export const AuthProvider = ({ children }) => {
 
         // Always check with Supabase for current session
         // Supabase handles session persistence internally, but we verify it
-        const { data: { session }, error } = await supabase.auth.getSession()
+        const sessionResult = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise((resolve) =>
+            setTimeout(() => resolve({ data: { session: null }, error: { message: 'session timeout' } }), 4000)
+          )
+        ])
+        const { data: { session }, error } = sessionResult
         
         if (error) {
           console.error('Error getting session:', error)
           // Don't clear cached session on error - might be temporary network issue
           if (mounted) {
-            setInitialized(true)
             setLoading(false)
           }
           return
@@ -88,8 +85,6 @@ export const AuthProvider = ({ children }) => {
 
         if (mounted) {
           if (session?.user) {
-            // Valid session exists - restore user state
-            console.log('Session found, user:', session.user.email)
             setUser(session.user)
             setCartUser(session.user)
             
@@ -108,7 +103,6 @@ export const AuthProvider = ({ children }) => {
                 // Verify profile matches current user
                 if (cachedProfile.user_id === session.user.id) {
                   setUserProfile(cachedProfile)
-                  console.log('Profile restored from cache')
                 } else {
                   // Profile doesn't match, fetch new one
                   fetchUserProfile(session.user.id)
@@ -122,76 +116,71 @@ export const AuthProvider = ({ children }) => {
             }
           } else {
             // No session - user is logged out
-            console.log('No session found')
             setUser(null)
             setCartUser(null)
             setUserProfile(null)
           }
-          setInitialized(true)
           setLoading(false)
         }
       } catch (error) {
         console.error('Error initializing auth:', error)
         if (mounted) {
-          setInitialized(true)
           setLoading(false)
         }
       }
     }
 
     initializeAuth()
+    const loadingSafety = setTimeout(() => {
+      if (mounted) setLoading(false)
+    }, 5000)
 
-    // Listen for auth changes
+    // Do not await other Supabase queries inside this callback — it deadlocks getSession()
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return
 
-      console.log('Auth state changed:', event, session?.user?.email || 'No user')
-
-      // Handle auth state changes properly
-      // CRITICAL: Only clear session on explicit SIGNED_OUT event
-      // Do NOT clear on other events with null session - Supabase handles token refresh
-      
       if (event === 'SIGNED_OUT') {
-        // Explicit sign out - clear everything
-        console.log('User explicitly signed out')
         setUser(null)
         setCartUser(null)
         setUserProfile(null)
         localStorage.removeItem('sb-session')
         localStorage.removeItem('user-profile')
-      } else if (session?.user) {
-        // Valid session exists - update state
-        console.log('Session active for user:', session.user.email)
+        setLoading(false)
+        return
+      }
+
+      if (session?.user) {
         setUser(session.user)
         setCartUser(session.user)
-        await fetchUserProfile(session.user.id)
-        
-        // Backup session to localStorage
+        setLoading(false)
         try {
           localStorage.setItem('sb-session', JSON.stringify(session))
-        } catch (err) {
-          console.error('Error saving session:', err)
-        }
+        } catch {}
+        fetchUserProfile(session.user.id)
       }
-      // For TOKEN_REFRESHED or other events without session, don't clear user state
-      // Ra Supabase manages session persistence internally
     })
 
     return () => {
       mounted = false
+      clearTimeout(loadingSafety)
       subscription.unsubscribe()
     }
   }, [])
 
   const fetchUserProfile = async (userId) => {
     try {
-      const { data, error } = await supabase
+      const query = supabase
         .from('users')
         .select('*')
         .eq('user_id', userId)
-        .single()
+        .maybeSingle()
+
+      const { data, error } = await Promise.race([
+        query,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('profile timeout')), 6000))
+      ])
 
       if (error && error.code !== 'PGRST116') {
         console.error('Error fetching user profile:', error)
@@ -199,8 +188,8 @@ export const AuthProvider = ({ children }) => {
       } else if (data) {
         // Self-heal: if email is admin but role isn't, upgrade role
         try {
-          const isAdminEmail = await checkAdminStatus(data.email)
-          if (isAdminEmail && data.role !== 'admin') {
+          const adminUser = await checkAdminStatus(data.email)
+          if (adminUser && data.role !== 'admin') {
             const { data: updated, error: updateError } = await supabase
               .from('users')
               .update({ role: 'admin' })
@@ -228,21 +217,9 @@ export const AuthProvider = ({ children }) => {
   const checkAdminStatus = async (email) => {
     try {
       if (!email) return false
-
-      // Normalize email
       const normalizedEmail = String(email).trim().toLowerCase()
+      if (isAdminEmail(normalizedEmail)) return true
 
-      // Check env list VITE_ADMIN_EMAILS (comma-separated)
-      const envAdminsRaw = import.meta.env.VITE_ADMIN_EMAILS || ''
-      const envAdmins = envAdminsRaw
-        .split(',')
-        .map(e => e.trim().toLowerCase())
-        .filter(Boolean)
-
-      if (envAdmins.includes(normalizedEmail) || normalizedEmail === 'asadmohammed181105@gmail.com') {
-        return true
-      }
-      
       const { data, error } = await supabase
         .from('admin_emails')
         .select('email, is_active')
@@ -317,74 +294,15 @@ export const AuthProvider = ({ children }) => {
       if (error) throw error
 
       if (data.user) {
-        // Set user immediately for responsive UI
         setUser(data.user)
         setCartUser(data.user)
+        setLoading(false)
 
-        // Ensure user profile exists and correct role is set
-        const { data: existingUser } = await supabase
-          .from('users')
-          .select('*')
-          .eq('user_id', data.user.id)
-          .single()
+        const adminUser = isAdminEmail(email)
+        fetchUserProfile(data.user.id)
 
-        // Check admin status based on email/admin_emails table
-        const shouldBeAdmin = await checkAdminStatus(email)
-
-        if (!existingUser) {
-          // Create user profile with correct role
-          const { error: profileError } = await supabase
-            .from('users')
-            .insert([
-              {
-                user_id: data.user.id,
-                name: data.user.user_metadata?.name || data.user.email.split('@')[0],
-                email: data.user.email,
-                role: shouldBeAdmin ? 'admin' : 'customer',
-                created_at: new Date().toISOString()
-              }
-            ])
-
-          if (profileError) {
-            console.error('Error creating user profile:', profileError)
-          }
-        } else if (shouldBeAdmin && existingUser.role !== 'admin') {
-          // Upgrade role to admin if necessary
-          const { error: updateError } = await supabase
-            .from('users')
-            .update({ role: 'admin' })
-            .eq('user_id', data.user.id)
-          if (updateError) {
-            console.error('Error updating user role to admin:', updateError)
-          }
-        }
-
-        // Get and persist session
-        const { data: sessionData } = await supabase.auth.getSession()
-        if (sessionData?.session) {
-          try {
-            localStorage.setItem('sb-session', JSON.stringify(sessionData.session))
-          } catch {}
-          
-          // Fetch updated profile and wait for it
-          await fetchUserProfile(data.user.id)
-          
-          toast.success('Signed in successfully!')
-          
-          // Redirect but preserve session - use replace to avoid adding to history
-          setTimeout(() => {
-            const profileRaw = localStorage.getItem('user-profile')
-            const profile = profileRaw ? JSON.parse(profileRaw) : null
-            if (profile?.role === 'admin') {
-              window.location.replace('/admin-dashboard')
-            } else {
-              window.location.replace('/')
-            }
-          }, 300)
-        } else {
-          toast.success('Signed in successfully!')
-          window.location.replace('/')
-        }
+        toast.success('Signed in successfully!')
+        window.location.replace(adminUser ? '/admin-dashboard' : '/')
       }
 
       return { data, error: null }
@@ -406,10 +324,7 @@ export const AuthProvider = ({ children }) => {
       siteUrl = siteUrl.replace(/\/$/, '')
       
       const redirectUrl = `${siteUrl}/auth/callback`
-      
-      console.log('Google OAuth redirect URL:', redirectUrl)
-      console.log('Site URL source:', import.meta.env.VITE_SITE_URL ? 'Environment variable' : 'window.location.origin')
-      
+
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -466,16 +381,7 @@ export const AuthProvider = ({ children }) => {
 
   const isAdmin = () => {
     if (userProfile?.role === 'admin') return true
-    const email = userProfile?.email || user?.email
-    const envAdminsRaw = import.meta.env.VITE_ADMIN_EMAILS || ''
-    const envAdmins = envAdminsRaw
-      .split(',')
-      .map(e => e.trim().toLowerCase())
-      .filter(Boolean)
-    const normalized = (email || '').trim().toLowerCase()
-    if (!normalized) return false
-    if (normalized === 'asadmohammed181105@gmail.com' || envAdmins.includes(normalized)) return true
-    return false
+    return isAdminEmail(userProfile?.email || user?.email)
   }
 
   const isCustomer = () => {

@@ -1,151 +1,145 @@
 import { Link } from 'react-router-dom'
-import { ArrowRight, Palette, Users, Sparkles, Award, Heart, Star } from 'lucide-react'
+import { ArrowRight, Award, Heart, Star, Palette, Sparkles, Home } from 'lucide-react'
+
+const collections = [
+  { name: 'Originals', href: '/originals', image: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=800&h=600&fit=crop', blurb: 'One-of-a-kind paintings' },
+  { name: 'Resin Art', href: '/resin-art', image: 'https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?w=800&h=600&fit=crop', blurb: 'Gloss and colour in layers' },
+  { name: 'Giftables', href: '/giftables', image: 'https://images.unsplash.com/photo-1513885535751-8b9238bd345a?w=800&h=600&fit=crop', blurb: 'Handmade presents' },
+  { name: 'Workshops', href: '/workshops', image: 'https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=800&h=600&fit=crop', blurb: 'Learn with us' },
+]
 
 const LandingPage = () => {
   return (
     <>
-    <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
-      {/* Video Background */}
-      <div className="absolute inset-0 z-0">
-        <video
-          className="w-full h-full object-cover"
-          autoPlay
-          muted
-          loop
-          playsInline
-        >
-          <source src="/hero-video.mp4" type="video/mp4" />
-          {/* Fallback image if video doesn't load */}
-        </video>
-        {/* Overlay for better text readability */}
-        <div className="absolute inset-0 bg-black bg-opacity-40"></div>
-      </div>
+      <section className="relative min-h-[88vh] flex items-center justify-center overflow-hidden">
+        <div className="absolute inset-0 z-0">
+          <video
+            className="w-full h-full object-cover"
+            autoPlay
+            muted
+            loop
+            playsInline
+            poster="https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=1600&h=900&fit=crop"
+          >
+            <source src="/hero-video.mp4" type="video/mp4" />
+          </video>
+          <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/35 to-black/60" />
+        </div>
 
-      {/* Hero Content */}
-      <div className="relative z-10 text-center text-white px-4 max-w-4xl mx-auto">
-        <div className="animate-fade-in">
-          <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
-            Welcome to{' '}
-            <span className="text-gradient bg-gradient-to-r from-white to-green-200 bg-clip-text text-transparent">
-              Arty Affairs
-            </span>
+        <div className="relative z-10 text-center text-white px-4 max-w-4xl mx-auto py-24">
+          <img src="/logo.jpg" alt="Arty Affairs" className="w-28 h-28 md:w-36 md:h-36 object-cover rounded-2xl mx-auto mb-6 shadow-xl" />
+          <p className="uppercase tracking-[0.35em] text-sm text-green-100 mb-4">Studio · Gallery · Workshops</p>
+          <h1 className="font-display text-5xl md:text-7xl font-semibold mb-6 leading-tight">
+            Arty Affairs
           </h1>
-          <p className="text-2xl md:text-3xl mb-4 text-green-100">
-            Where Art Meets Passion
+          <p className="text-xl md:text-2xl mb-4 text-green-50">Where art meets passion</p>
+          <p className="text-base md:text-lg mb-10 text-gray-200 max-w-2xl mx-auto">
+            Original artworks, custom commissions, workshops, and interiors — made by artists, for spaces that feel like yours.
           </p>
-          <p className="text-lg md:text-xl mb-12 text-gray-200 max-w-2xl mx-auto">
-            Explore, Shop & Learn from talented artists. Discover unique artworks, 
-            attend workshops, and transform your space with our interior design services.
-          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+            <Link to="/shop" className="btn-primary text-lg px-8 py-4">
+              <span>Explore artworks</span>
+              <ArrowRight className="w-5 h-5 ml-2" />
+            </Link>
+            <Link
+              to="/workshops"
+              className="inline-flex items-center justify-center border-2 border-white text-white px-8 py-4 rounded-lg font-medium hover:bg-white hover:text-forest-green transition-all"
+            >
+              Join a workshop
+            </Link>
+          </div>
         </div>
+      </section>
 
-        {/* CTA Buttons */}
-        <div className="animate-slide-up flex flex-col sm:flex-row gap-4 justify-center items-center">
-          <Link
-            to="/shop"
-            className="btn-forest-green text-lg px-8 py-4 bg-forest-green hover:bg-opacity-90 flex items-center space-x-2"
-          >
-            <span>Explore Artworks</span>
-            <ArrowRight className="w-5 h-5" />
-          </Link>
-          <Link
-            to="/workshops"
-            className="btn-secondary text-lg px-8 py-4 border-white text-white hover:bg-white hover:text-forest-green"
-          >
-            Join Workshops
-          </Link>
-        </div>
-      </div>
-
-      {/* Features Section */}
-      <div className="absolute bottom-8 left-0 right-0 z-10">
+      <section className="bg-cream section-padding">
         <div className="container-max">
-          <div className="flex justify-center">
-            <div className="text-center animate-slide-up max-w-sm">
-              <div className="w-16 h-16 bg-forest-green bg-opacity-80 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Palette className="w-8 h-8" />
+          <div className="flex items-end justify-between mb-10 gap-4 flex-wrap">
+            <div>
+              <p className="text-sm uppercase tracking-[0.2em] text-forest-green mb-2">Collections</p>
+              <h2 className="font-display text-3xl md:text-4xl text-gray-900">Start exploring</h2>
+            </div>
+            <Link to="/shop" className="text-forest-green font-medium inline-flex items-center gap-2">
+              View all <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {collections.map((item) => (
+              <Link
+                key={item.name}
+                to={item.href}
+                className="group relative overflow-hidden rounded-2xl aspect-[4/5] bg-gray-200"
+              >
+                <img
+                  src={item.image}
+                  alt={item.name}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-5 text-white">
+                  <h3 className="font-display text-2xl">{item.name}</h3>
+                  <p className="text-sm text-gray-200">{item.blurb}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-dark-green text-white py-20">
+        <div className="container-max">
+          <div className="text-center mb-16">
+            <h2 className="font-display text-4xl md:text-5xl mb-6">The art of excellence</h2>
+            <p className="text-lg text-gray-200 max-w-3xl mx-auto leading-relaxed">
+              Each piece is curated and crafted with care — from original canvases to custom commissions and interiors.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Award className="w-8 h-8" />
               </div>
-              <h3 className="text-xl font-semibold mb-2">Original Artworks</h3>
-              <p className="text-gray-200">
-                Discover unique pieces created by talented artists
-              </p>
+              <h3 className="text-xl font-semibold mb-3">Premium quality</h3>
+              <p className="text-gray-200 leading-relaxed">Materials and finishing chosen to last, so the work stays beautiful in your home.</p>
+            </div>
+            <div className="text-center">
+              <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Heart className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-semibold mb-3">Made by artists</h3>
+              <p className="text-gray-200 leading-relaxed">Every artwork is created by people who care about the story behind the piece.</p>
+            </div>
+            <div className="text-center">
+              <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Star className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-semibold mb-3">Made for you</h3>
+              <p className="text-gray-200 leading-relaxed">Shop ready works, or commission something that fits your space and brief.</p>
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Scroll Indicator */}
-      <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-10">
-        <div className="animate-bounce">
-          <div className="w-6 h-10 border-2 border-white rounded-full flex justify-center">
-            <div className="w-1 h-3 bg-white rounded-full mt-2 animate-pulse"></div>
+      <section className="section-padding bg-white">
+        <div className="container-max">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {[
+              { icon: Palette, title: 'Shop originals', text: 'Browse paintings, resin, ceramics, and giftables.', href: '/shop' },
+              { icon: Sparkles, title: 'Commission a piece', text: 'Share a brief and we will create something unique.', href: '/commission' },
+              { icon: Home, title: 'Style your space', text: 'Interior styling that puts art at the centre.', href: '/interior-design' },
+            ].map((card) => (
+              <Link key={card.title} to={card.href} className="p-8 rounded-2xl border border-gray-100 bg-cream hover:shadow-lg transition-shadow">
+                <card.icon className="w-8 h-8 text-forest-green mb-4" />
+                <h3 className="font-display text-2xl mb-2">{card.title}</h3>
+                <p className="text-gray-600 mb-4">{card.text}</p>
+                <span className="text-forest-green font-medium inline-flex items-center gap-2">
+                  Learn more <ArrowRight className="w-4 h-4" />
+                </span>
+              </Link>
+            ))}
           </div>
         </div>
-      </div>
-    </div>
-
-    {/* New Info Section */}
-    <section className="bg-dark-green text-white py-20">
-      <div className="container-max">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl md:text-5xl font-bold mb-6">
-            Discover the Art of Excellence
-          </h2>
-          <p className="text-xl text-gray-200 max-w-3xl mx-auto leading-relaxed">
-            Immerse yourself in a world where creativity meets craftsmanship. 
-            Each piece tells a unique story, crafted with passion and precision by our talented artists.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
-          {/* Quality Excellence */}
-          <div className="text-center group">
-            <div className="w-20 h-20 bg-white bg-opacity-10 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:bg-opacity-20 transition-all duration-300">
-              <Award className="w-10 h-10 text-white" />
-            </div>
-            <h3 className="text-2xl font-semibold mb-4">Premium Quality</h3>
-            <p className="text-gray-200 leading-relaxed">
-              Every artwork is carefully curated and crafted using the finest materials, 
-              ensuring lasting beauty and exceptional quality.
-            </p>
-          </div>
-
-          {/* Artist Passion */}
-          <div className="text-center group">
-            <div className="w-20 h-20 bg-white bg-opacity-10 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:bg-opacity-20 transition-all duration-300">
-              <Heart className="w-10 h-10 text-white" />
-            </div>
-            <h3 className="text-2xl font-semibold mb-4">Artisan Passion</h3>
-            <p className="text-gray-200 leading-relaxed">
-              Created by passionate artists who pour their heart and soul into every piece, 
-              bringing you authentic and meaningful artwork.
-            </p>
-          </div>
-
-          {/* Unique Experience */}
-          <div className="text-center group">
-            <div className="w-20 h-20 bg-white bg-opacity-10 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:bg-opacity-20 transition-all duration-300">
-              <Star className="w-10 h-10 text-white" />
-            </div>
-            <h3 className="text-2xl font-semibold mb-4">Unique Experience</h3>
-            <p className="text-gray-200 leading-relaxed">
-              From original masterpieces to custom creations, each piece offers a unique 
-              experience that transforms your space into something extraordinary.
-            </p>
-          </div>
-        </div>
-
-        <div className="text-center mt-16">
-          <Link
-            to="/shop"
-            className="inline-flex items-center space-x-2 bg-white text-forest-green px-8 py-4 rounded-lg font-semibold text-lg hover:bg-gray-100 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-          >
-            <span>Explore Our Collection</span>
-            <ArrowRight className="w-5 h-5" />
-          </Link>
-        </div>
-      </div>
-    </section>
+      </section>
     </>
   )
 }

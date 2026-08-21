@@ -7,7 +7,7 @@ const SocialButtons = () => {
 
   const handleWhatsAppClick = () => {
     // Replace with actual WhatsApp number
-    const whatsappNumber = '1234567890' // Replace with your actual WhatsApp number
+    const whatsappNumber = import.meta.env.VITE_WHATSAPP_NUMBER || '919999999999'
     window.open(`https://wa.me/${whatsappNumber}`, '_blank', 'noopener,noreferrer')
   }
 

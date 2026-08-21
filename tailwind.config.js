@@ -8,11 +8,14 @@ export default {
     extend: {
         colors: {
           'forest-green': '#326b5a',
+          'forest-green-dark': '#1E4B3F',
           'dark-green': '#1E4B3F',
+          cream: '#F7F4EF',
           'white': '#FFFFFF',
         },
       fontFamily: {
-        'sans': ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        display: ['Playfair Display', 'Georgia', 'serif'],
       },
       animation: {
         'fade-in': 'fadeIn 0.5s ease-in-out',

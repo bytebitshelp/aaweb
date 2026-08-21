@@ -1,51 +1,27 @@
-const RESEND_API_KEY = import.meta.env.VITE_RESEND_API_KEY
-const DEFAULT_FROM = import.meta.env.VITE_RESEND_FROM_EMAIL || 'Arty Affairs <notifications@artyaffairs.com>'
 const DEFAULT_TO = import.meta.env.VITE_ENQUIRY_EMAIL || 'hello@artyaffairs.com'
 
 export const sendSupportEmail = async ({
   subject,
   html,
   to = DEFAULT_TO,
-  from = DEFAULT_FROM,
+  from,
   replyTo
 }) => {
-  if (!RESEND_API_KEY) {
-    console.warn('[Resend] API key missing; skipping email send')
-    return { success: false, error: 'Resend API key not configured' }
-  }
-
-  if (!to) {
-    console.warn('[Resend] Destination email missing; skipping email send')
-    return { success: false, error: 'Destination email not configured' }
-  }
-
   try {
-    const response = await fetch('https://api.resend.com/emails', {
+    const response = await fetch('/api/send-email', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${RESEND_API_KEY}`
-      },
-      body: JSON.stringify({
-        from,
-        to: Array.isArray(to) ? to : [to],
-        subject,
-        html,
-        reply_to: replyTo ? [replyTo] : undefined
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subject, html, to, from, replyTo })
     })
 
+    const data = await response.json().catch(() => ({}))
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      console.error('[Resend] Failed to send email', errorData)
-      return { success: false, error: errorData?.message || 'Failed to send email' }
+      return { success: false, error: data.error || 'Failed to send email' }
     }
 
-    const data = await response.json()
-    console.log('[Resend] Email sent:', data)
-    return { success: true, id: data?.id }
+    return { success: true, id: data.id }
   } catch (error) {
-    console.error('[Resend] Unexpected error', error)
+    console.error('[Email] Unexpected error', error)
     return { success: false, error: error.message }
   }
 }
@@ -66,7 +42,7 @@ export const buildHtmlFromObject = (title, entries = []) => {
   return `
     <div style="font-family: 'Segoe UI', sans-serif; background: #f9fafb; padding: 24px;">
       <div style="max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e5e7eb; overflow: hidden;">
-        <div style="padding: 20px 24px; background: #1b5e20; color: #ffffff;">
+        <div style="padding: 20px 24px; background: #326b5a; color: #ffffff;">
           <h2 style="margin: 0; font-size: 20px;">${title}</h2>
         </div>
         <table style="width: 100%; border-collapse: collapse;">
@@ -78,4 +54,3 @@ export const buildHtmlFromObject = (title, entries = []) => {
     </div>
   `
 }
-

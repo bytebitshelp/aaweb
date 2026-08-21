@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { ShoppingCart, Eye } from 'lucide-react'
+import { ShoppingCart, Eye, Heart } from 'lucide-react'
 import { useCartStore } from '../store/cartStore'
+import { useWishlistStore } from '../store/wishlistStore'
 import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
 import ImageCarousel from './ImageCarousel'
@@ -10,7 +11,9 @@ const ArtworkCard = ({ artwork, onView }) => {
   const [imageLoaded, setImageLoaded] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
   const { addItem } = useCartStore()
+  const { toggleItem, isInWishlist } = useWishlistStore()
   const { user } = useAuth()
+  const saved = isInWishlist(artwork.artwork_id)
 
   const handleImageLoad = () => {
     setImageLoaded(true)
@@ -145,6 +148,16 @@ const ArtworkCard = ({ artwork, onView }) => {
               className="p-2 bg-white bg-opacity-90 rounded-full hover:bg-opacity-100 transition-all"
             >
               <Eye className="w-4 h-4 text-gray-700" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                toggleItem(artwork)
+              }}
+              className="p-2 bg-white bg-opacity-90 rounded-full hover:bg-opacity-100 transition-all"
+              aria-label="Save to wishlist"
+            >
+              <Heart className={`w-4 h-4 ${saved ? 'fill-red-500 text-red-500' : 'text-gray-700'}`} />
             </button>
             {isAvailable && (
               <button

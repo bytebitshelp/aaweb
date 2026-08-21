@@ -1,42 +1,50 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { supabase, fetchPublicArtworks } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
-import { getImageUrl, getImageUrls } from '../../lib/imageUtils'
-import { 
-  LayoutDashboard, 
-  ShoppingCart, 
-  Palette, 
-  Users, 
+import { getImageUrl, normalizeArtworkMedia } from '../../lib/imageUtils'
+import {
+  ShoppingCart,
+  Palette,
+  Users,
   BarChart3,
   Plus,
-  Eye,
   Package,
   Truck,
   DollarSign,
-  TrendingUp,
-  Clock,
   CheckCircle,
   XCircle,
-  AlertCircle,
   Trash2,
   Menu,
-  X
+  X,
+  RefreshCw,
+  Search,
+  AlertCircle,
+  Calendar
 } from 'lucide-react'
+import BrandLogo from '../../components/BrandLogo'
+import WorkshopManager from '../../components/Admin/WorkshopManager'
 import toast from 'react-hot-toast'
+
+const lower = (value) => String(value || '').toLowerCase()
+const isPaid = (status) => ['paid'].includes(lower(status))
+const isPending = (status) => ['pending', 'processing'].includes(lower(status))
+const isDispatched = (status) => ['dispatched', 'shipped'].includes(lower(status))
+const isAvailable = (status) => lower(status) === 'available'
 
 const AdminDashboard = () => {
   const navigate = useNavigate()
-  const { userProfile, signIn, signInWithGoogle } = useAuth()
-  const [showLogin, setShowLogin] = useState(false)
-  const [loginData, setLoginData] = useState({ email: '', password: '' })
-  const [loginLoading, setLoginLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState('orders')
+  const { user, userProfile, isAdmin } = useAuth()
+  const [activeTab, setActiveTab] = useState('artworks')
   const [orders, setOrders] = useState([])
   const [artworks, setArtworks] = useState([])
   const [users, setUsers] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const [connection, setConnection] = useState({ ok: true, message: 'Checking Supabase…' })
+  const [usersRestricted, setUsersRestricted] = useState(false)
   const [stats, setStats] = useState({
     totalOrders: 0,
     totalRevenue: 0,
@@ -47,1111 +55,497 @@ const AdminDashboard = () => {
   })
 
   useEffect(() => {
-    console.log('=== ADMIN DASHBOARD MOUNTED ===')
-    console.log('User profile:', userProfile)
-    
-    // Wait a bit for auth to initialize, then fetch data
-    const timer = setTimeout(() => {
-      console.log('Starting to fetch data...')
-      fetchDashboardData()
-    }, 100)
-    
-    return () => clearTimeout(timer)
-  }, [userProfile]) // Add userProfile as dependency to refetch when profile loads
+    fetchDashboardData()
+  }, [user?.id])
 
-  // Refetch artworks when switching to artworks tab
-  useEffect(() => {
-    if (activeTab === 'artworks' && artworks.length === 0 && !loading) {
-      console.log('Artworks tab active but no artworks, fetching...')
-      fetchArtworks()
-    }
-  }, [activeTab])
-
-  const handleLogin = async (e) => {
-    e.preventDefault()
-    if (!loginData.email || !loginData.password) {
-      toast.error('Please fill in all fields')
-      return
-    }
-
-    try {
-      setLoginLoading(true)
-      await signIn(loginData.email, loginData.password)
-      
-      if (loginData.email === 'asadmohammed181105@gmail.com' && loginData.password === '123456789') {
-        toast.success('Welcome back, Admin!')
-        setShowLogin(false)
-        fetchDashboardData()
-      } else {
-        toast.error('Invalid admin credentials')
-      }
-    } catch (error) {
-      console.error('Login error:', error)
-      toast.error('Invalid email or password')
-    } finally {
-      setLoginLoading(false)
-    }
-  }
-
-  const handleGoogleLogin = async () => {
-    try {
-      setLoginLoading(true)
-      const result = await signInWithGoogle()
-      
-      if (result.user.email === 'asadmohammed181105@gmail.com') {
-        toast.success('Welcome back, Admin!')
-        setShowLogin(false)
-        fetchDashboardData()
-      } else {
-        toast.error('Only admin accounts are allowed')
-      }
-    } catch (error) {
-      console.error('Google login error:', error)
-      toast.error('Google login failed')
-    } finally {
-      setLoginLoading(false)
-    }
-  }
-
+  const withTimeout = (promise, ms = 5000) =>
+    Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timed out')), ms))
+    ])
 
   const fetchDashboardData = async () => {
-    console.log('fetchDashboardData called')
-    
+    setLoading(true)
     try {
-      console.log('Fetching data one at a time to identify issues...')
-      
-      // Fetch data sequentially to see which one fails
-      console.log('1. Fetching stats...')
-      await fetchStats()
-      
-      console.log('2. Fetching orders...')
-      await fetchOrders()
-      
-      console.log('3. Fetching artworks...')
       await fetchArtworks()
-      
-      console.log('4. Fetching users...')
-      await fetchUsers()
-      
-      console.log('All data fetched successfully')
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error)
-      toast.error('Failed to load dashboard data')
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
+    fetchOrders()
+    fetchUsers()
+  }
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    await fetchDashboardData()
+    toast.success('Dashboard refreshed')
+  }
+
+  const fetchArtworks = async () => {
+    try {
+      const data = await fetchPublicArtworks()
+      const processed = (data || []).map((artwork) => {
+        const media = normalizeArtworkMedia(artwork)
+        return {
+          ...artwork,
+          artwork_id: artwork.artwork_id || artwork.id,
+          image_urls: media.image_urls,
+          image_url: media.image_url,
+          status: artwork.status || 'available',
+          quantity_available: artwork.quantity_available ?? 0,
+          price: Number(artwork.price) || 0
+        }
+      })
+      setArtworks(processed)
+      setConnection({ ok: true, message: `Connected · ${processed.length} artworks` })
+    } catch (err) {
+      setConnection({ ok: false, message: err.message || 'Could not load artworks' })
+      setArtworks([])
     }
   }
 
   const fetchOrders = async () => {
     try {
-      console.log('Starting fetchOrders...')
-      console.log('Supabase URL:', import.meta.env.VITE_SUPABASE_URL)
-      console.log('Testing simple query...')
-      
-      // Try the simplest possible query first
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*')
-        .limit(5)
-      
-      console.log('Orders query result:', { 
-        hasData: !!data, 
-        dataLength: data?.length,
-        error: error?.message || 'None',
-        errorCode: error?.code,
-        errorDetails: error?.details
-      })
-      
-      if (error) {
-        console.error('Error fetching orders:', error)
-        console.error('Full error object:', JSON.stringify(error, null, 2))
-        toast.error(`Failed to load orders: ${error.message || error.code || 'Unknown error'}`)
-        setOrders([]) // Set empty array on error
+      const result = await withTimeout(
+        supabase
+          .from('orders')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(200)
+      )
+      if (result.error) {
+        setOrders([])
         return
       }
-      
-      console.log('Orders fetched successfully:', data?.length || 0)
-      setOrders(data || [])
-    } catch (err) {
-      console.error('fetchOrders exception:', err)
-      toast.error(`Failed to load orders: ${err.message}`)
+      setOrders(result.data || [])
+    } catch {
       setOrders([])
-    }
-  }
-
-  const fetchArtworks = async () => {
-    try {
-      console.log('=== fetchArtworks START ===')
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ibgztilnaecjexshxmrz.supabase.co'
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliZ3p0aWxuYWVjamV4c2h4bXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc2ODEzMTIsImV4cCI6MjA3MzI1NzMxMn0.BXVkSNLdZb6y6SyzBGIcr7MiFDsjUwY9LU01dJwmGRo'
-      
-      console.log('Supabase URL:', supabaseUrl)
-      console.log('Has API Key:', !!supabaseKey)
-      setLoading(true)
-
-      // Try direct fetch first to see what error we get
-      console.log('Attempting direct fetch to Supabase...')
-      const fetchUrl = `${supabaseUrl}/rest/v1/artworks?select=*`
-      
-      const fetchPromise = fetch(fetchUrl, {
-        method: 'GET',
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=representation'
-        }
-      })
-      
-      const fetchWithTimeout = new Promise(async (resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error('Fetch timeout - Network request not completing'))
-        }, 10000)
-        
-        try {
-          const response = await fetchPromise
-          clearTimeout(timeout)
-          resolve(response)
-        } catch (err) {
-          clearTimeout(timeout)
-          reject(err)
-        }
-      })
-      
-      const response = await fetchWithTimeout
-      console.log('Fetch response status:', response.status, response.statusText)
-      
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error('Fetch error response:', errorText)
-        throw new Error(`HTTP ${response.status}: ${errorText}`)
-      }
-      
-      const data = await response.json()
-      const error = null
-      
-      console.log('Direct fetch successful, data:', data)
-
-      console.log('Artworks query response:', {
-        hasData: !!data,
-        dataLength: data?.length || 0,
-        dataType: Array.isArray(data) ? 'array' : typeof data
-      })
-
-      // Handle null or undefined data
-      if (!data) {
-        console.warn('⚠️ Query returned null/undefined data')
-        setArtworks([])
-        setLoading(false)
-        return
-      }
-
-      // Log raw data for debugging
-      if (data.length > 0) {
-        console.log('✅ Raw artwork data (first item):', data[0])
-      } else {
-        console.warn('⚠️ Query returned empty array')
-      }
-
-      // Process data
-      const processedData = (data || []).map(artwork => {
-        // Ensure artwork_id exists
-        if (!artwork.artwork_id && artwork.id) {
-          artwork.artwork_id = artwork.id
-        }
-        
-        // Handle image_urls - could be string, array, or null
-        if (artwork.image_urls) {
-          if (typeof artwork.image_urls === 'string') {
-            try {
-              artwork.image_urls = JSON.parse(artwork.image_urls)
-            } catch (e) {
-              // If parsing fails, treat as single URL string
-              artwork.image_urls = [artwork.image_urls]
-            }
-          } else if (!Array.isArray(artwork.image_urls)) {
-            artwork.image_urls = [artwork.image_urls]
-          }
-        }
-        
-        // Fallback: use image_url if image_urls is empty
-        if ((!artwork.image_urls || artwork.image_urls.length === 0) && artwork.image_url) {
-          artwork.image_urls = [artwork.image_url]
-        }
-
-        // Ensure required fields have defaults
-        artwork.status = artwork.status || 'available'
-        artwork.quantity_available = artwork.quantity_available ?? 0
-        artwork.price = artwork.price || 0
-
-        return artwork
-      })
-      
-      console.log('✅ Processed artworks:', processedData.length)
-      console.log('✅ Setting artworks state with:', processedData.length, 'items')
-      
-      setArtworks(processedData)
-      setLoading(false)
-      
-      console.log('=== fetchArtworks COMPLETE ===')
-    } catch (err) {
-      console.error('❌ fetchArtworks EXCEPTION:', err)
-      console.error('Exception details:', {
-        message: err.message,
-        stack: err.stack,
-        name: err.name
-      })
-      
-      if (err.message?.includes('timeout')) {
-        toast.error('Query timed out. This usually means:\n1. RLS policies are blocking the query\n2. Network connection issue\n3. Supabase service is down\n\nPlease check your browser console and network tab.')
-        console.error('💡 TROUBLESHOOTING:')
-        console.error('1. Open Network tab in DevTools and check if the request to Supabase is being made')
-        console.error('2. Check if you ran fix-rls-policies.sql in Supabase SQL Editor')
-        console.error('3. Verify your Supabase URL and API key are correct')
-        console.error('4. Try accessing Supabase dashboard to verify service is up')
-      } else {
-        toast.error(`Failed to load artworks: ${err.message}`)
-      }
-      
-      setArtworks([])
-      setLoading(false)
     }
   }
 
   const fetchUsers = async () => {
     try {
-      console.log('Starting fetchUsers...')
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .limit(30)
-
-      console.log('Users query result:', { 
-        hasData: !!data, 
-        dataLength: data?.length,
-        error: error?.message || 'None'
-      })
-      
+      const { data, error } = await withTimeout(
+        supabase
+          .from('users')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(50)
+      )
       if (error) {
-        console.error('Error fetching users:', error)
-        console.error('Error details:', JSON.stringify(error, null, 2))
+        setUsersRestricted(true)
         setUsers([])
         return
       }
-      
-      console.log('Users fetched:', data?.length || 0)
+      setUsersRestricted((data || []).length === 0)
       setUsers(data || [])
-    } catch (err) {
-      console.error('fetchUsers exception:', err)
+    } catch {
+      setUsersRestricted(true)
       setUsers([])
     }
   }
 
-  const fetchStats = async () => {
-    try {
-      console.log('Starting fetchStats...')
-      
-      // Verify session (skip timeout for now, just log)
-      console.log('FetchStats - Checking session...')
-      let session, sessionError
-      try {
-        const { data: sessionData, error: sessError } = await supabase.auth.getSession()
-        session = sessionData?.session
-        sessionError = sessError
-      } catch (err) {
-        console.warn('Session check exception:', err)
-        sessionError = err
-        session = null
-      }
-      
-      console.log('FetchStats - Session check complete:', { 
-        hasSession: !!session, 
-        email: session?.user?.email,
-        sessionError: sessionError?.message || 'None'
-      })
-      
-      // Continue even if session check fails - we can still query public data
-      
-      // Run queries sequentially to identify which one hangs
-      console.log('FetchStats - Fetching orders...')
-      const ordersResult = await supabase
-        .from('orders')
-        .select('order_id, payment_status, total_amount, order_status')
-        .limit(1000)
-      console.log('FetchStats - Orders query complete:', {
-        hasData: !!ordersResult.data,
-        count: ordersResult.data?.length || 0,
-        error: ordersResult.error?.message || 'None'
-      })
+  useEffect(() => {
+    const totalRevenue = orders
+      .filter((order) => isPaid(order.payment_status))
+      .reduce((sum, order) => sum + Number(order.total_amount || order.artworks?.price * (order.quantity || 1) || 0), 0)
 
-      console.log('FetchStats - Fetching artworks...')
-      let artworksResult = await supabase
-        .from('artworks')
-        .select('artwork_id')
-        .limit(1000)
-      console.log('FetchStats - Artworks query complete:', {
-        hasData: !!artworksResult.data,
-        count: artworksResult.data?.length || 0,
-        error: artworksResult.error?.message || 'None',
-        errorCode: artworksResult.error?.code
-      })
-
-      // If artworks query failed, try again with simpler query
-      if (artworksResult.error) {
-        console.warn('Artworks count query failed, retrying with minimal select...')
-        artworksResult = await supabase
-          .from('artworks')
-          .select('artwork_id', { count: 'exact', head: true })
-        console.log('Retry artworks result:', {
-          error: artworksResult.error?.message,
-          count: artworksResult.count
-        })
-      }
-
-      console.log('FetchStats - Fetching users...')
-      const usersResult = await supabase
-        .from('users')
-        .select('user_id')
-        .limit(1000)
-      console.log('FetchStats - Users query complete:', {
-        hasData: !!usersResult.data,
-        count: usersResult.data?.length || 0,
-        error: usersResult.error?.message || 'None'
-      })
-
-      console.log('Stats query results:', {
-        ordersError: ordersResult.error?.message || 'None',
-        ordersErrorCode: ordersResult.error?.code,
-        ordersCount: ordersResult.data?.length || 0,
-        artworksError: artworksResult.error?.message || 'None',
-        artworksErrorCode: artworksResult.error?.code,
-        artworksCount: artworksResult.data?.length || artworksResult.count || 0,
-        usersError: usersResult.error?.message || 'None',
-        usersErrorCode: usersResult.error?.code,
-        usersCount: usersResult.data?.length || 0
-      })
-
-      const ordersData = ordersResult.data || []
-      const totalRevenue = ordersData
-        .filter(order => order.payment_status === 'Paid' || order.payment_status === 'paid')
-        .reduce((sum, order) => sum + (order.total_amount || 0), 0)
-
-      const pendingOrders = ordersData.filter(order => 
-        order.order_status === 'Pending' || order.order_status === 'pending'
-      ).length
-      const paidOrders = ordersData.filter(order => 
-        order.payment_status === 'Paid' || order.payment_status === 'paid'
-      ).length
-
-      const artworksCount = artworksResult.data?.length || artworksResult.count || 0
-
-      setStats({
-        totalOrders: ordersData.length,
-        totalRevenue,
-        totalArtworks: artworksCount,
-        totalUsers: usersResult.data?.length || 0,
-        pendingOrders,
-        paidOrders
-      })
-      
-      console.log('Stats loaded successfully:', {
-        totalArtworks: artworksCount,
-        totalOrders: ordersData.length,
-        totalUsers: usersResult.data?.length || 0
-      })
-    } catch (err) {
-      console.error('fetchStats exception:', err)
-      console.error('Exception details:', JSON.stringify(err, null, 2))
-      console.error('Exception stack:', err.stack)
-      // Set default stats on error
-      setStats({
-        totalOrders: 0,
-        totalRevenue: 0,
-        totalArtworks: 0,
-        totalUsers: 0,
-        pendingOrders: 0,
-        paidOrders: 0
-      })
-    }
-  }
+    setStats({
+      totalOrders: orders.length,
+      totalRevenue,
+      totalArtworks: artworks.length,
+      totalUsers: users.length,
+      pendingOrders: orders.filter((order) => isPending(order.order_status)).length,
+      paidOrders: orders.filter((order) => isPaid(order.payment_status)).length
+    })
+  }, [orders, artworks, users])
 
   const markOrderAsDispatched = async (orderId) => {
-    try {
-      const { error } = await supabase
-        .from('orders')
-        .update({ order_status: 'Dispatched' })
-        .eq('order_id', orderId)
+    const { error } = await supabase
+      .from('orders')
+      .update({ order_status: 'dispatched' })
+      .eq('order_id', orderId)
 
-      if (error) throw error
-
-      toast.success('Order marked as dispatched')
-      fetchOrders()
-    } catch (error) {
-      console.error('Error updating order:', error)
-      toast.error('Failed to update order')
+    if (error) {
+      toast.error(error.message || 'Could not update order')
+      return
     }
+    toast.success('Order marked as dispatched')
+    fetchOrders()
   }
 
   const toggleArtworkAvailability = async (artworkId, currentStatus) => {
-    try {
-      const newStatus = currentStatus === 'Available' ? 'Sold' : 'Available'
-      const { error } = await supabase
-        .from('artworks')
-        .update({ status: newStatus })
-        .eq('artwork_id', artworkId)
+    const next = isAvailable(currentStatus) ? 'sold' : 'available'
+    const { error } = await supabase
+      .from('artworks')
+      .update({ status: next })
+      .eq('artwork_id', artworkId)
 
-      if (error) throw error
-
-      toast.success(`Artwork marked as ${newStatus.toLowerCase()}`)
-      fetchArtworks()
-    } catch (error) {
-      console.error('Error updating artwork:', error)
-      toast.error('Failed to update artwork')
+    if (error) {
+      toast.error(error.message || 'Could not update artwork. Sign in as admin and check RLS.')
+      return
     }
+    toast.success(`Artwork marked as ${next}`)
+    fetchArtworks()
   }
 
   const deleteArtwork = async (artworkId) => {
-    if (!window.confirm('Are you sure you want to delete this artwork? This action cannot be undone.')) {
+    if (!window.confirm('Delete this artwork? This cannot be undone.')) return
+    const { error } = await supabase
+      .from('artworks')
+      .delete()
+      .eq('artwork_id', artworkId)
+
+    if (error) {
+      toast.error(error.message || 'Could not delete artwork')
       return
     }
-
-    try {
-      const { error } = await supabase
-        .from('artworks')
-        .delete()
-        .eq('artwork_id', artworkId)
-
-      if (error) throw error
-
-      toast.success('Artwork deleted successfully')
-      fetchArtworks()
-    } catch (error) {
-      console.error('Error deleting artwork:', error)
-      toast.error('Failed to delete artwork')
-    }
+    toast.success('Artwork deleted')
+    fetchArtworks()
   }
 
+  const filteredArtworks = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return artworks
+    return artworks.filter((item) =>
+      [item.title, item.artist_name, item.category].join(' ').toLowerCase().includes(q)
+    )
+  }, [artworks, search])
+
   const sidebarItems = [
-    { id: 'orders', label: 'Orders Management', icon: ShoppingCart },
-    { id: 'artworks', label: 'Artwork Management', icon: Palette },
-    { id: 'users', label: 'User Overview', icon: Users },
-    { id: 'analytics', label: 'Analytics', icon: BarChart3 }
+    { id: 'orders', label: 'Orders', icon: ShoppingCart },
+    { id: 'artworks', label: 'Artworks', icon: Palette },
+    { id: 'workshops', label: 'Workshops', icon: Calendar },
+    { id: 'users', label: 'Customers', icon: Users },
+    { id: 'analytics', label: 'Overview', icon: BarChart3 }
   ]
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Login Form */}
-      {showLogin && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center">Admin Login</h2>
-            
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                <input
-                  type="email"
-                  value={loginData.email}
-                  onChange={(e) => setLoginData({...loginData, email: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-forest-green"
-                  placeholder="Enter admin email"
-                  required
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
-                <input
-                  type="password"
-                  value={loginData.password}
-                  onChange={(e) => setLoginData({...loginData, password: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-forest-green"
-                  placeholder="Enter password"
-                  required
-                />
-              </div>
-              
-              <button
-                type="submit"
-                disabled={loginLoading}
-                className="w-full btn-primary disabled:opacity-50"
-              >
-                {loginLoading ? 'Signing In...' : 'Sign In'}
-              </button>
-            </form>
-            
-            <div className="mt-4 text-center">
-              <button
-                onClick={handleGoogleLogin}
-                disabled={loginLoading}
-                className="w-full flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
-                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                </svg>
-                Sign In with Google
-              </button>
-            </div>
-            
-            <div className="mt-4 text-center">
-              <button
-                onClick={() => setShowLogin(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Login Button */}
-      {!userProfile && (
-        <div className="fixed top-4 right-4 z-40">
-          <button
-            onClick={() => setShowLogin(true)}
-            className="btn-primary"
-          >
-            Admin Login
-          </button>
-        </div>
-      )}
-      {/* Mobile Header */}
-      <div className="lg:hidden bg-white shadow-sm border-b border-gray-200 p-4">
+    <div className="min-h-screen bg-cream">
+      <div className="lg:hidden bg-white border-b p-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-forest-green rounded-full flex items-center justify-center">
-              <span className="text-white font-bold text-sm">A</span>
-            </div>
+          <div className="flex items-center gap-3">
+            <BrandLogo className="h-10 w-10" />
             <div>
-              <h1 className="text-lg font-bold text-forest-green">Admin Dashboard</h1>
-              <p className="text-xs text-gray-500">Arty Affairs</p>
+            <h1 className="font-display text-lg text-forest-green">Admin</h1>
+            <p className="text-xs text-gray-500">{userProfile?.email || user?.email}</p>
             </div>
           </div>
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-2 rounded-lg hover:bg-gray-100"
-          >
+          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 rounded-lg hover:bg-gray-100">
             {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
         </div>
-        
-        {/* Mobile Navigation */}
         {mobileMenuOpen && (
-          <div className="mt-4 space-y-2">
-            {sidebarItems.map((item) => {
-              const Icon = item.icon
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setActiveTab(item.id)
-                    setMobileMenuOpen(false)
-                  }}
-                  className={`w-full flex items-center space-x-3 px-4 py-3 text-left transition-colors rounded-lg ${
-                    activeTab === item.id
-                      ? 'bg-forest-green text-white'
-                      : 'text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <Icon className="w-5 h-5" />
-                  <span className="font-medium">{item.label}</span>
-                </button>
-              )
-            })}
+          <div className="mt-3 space-y-1">
+            {sidebarItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => { setActiveTab(item.id); setMobileMenuOpen(false) }}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg ${activeTab === item.id ? 'bg-forest-green text-white' : 'hover:bg-gray-50'}`}
+              >
+                <item.icon className="w-5 h-5" />
+                {item.label}
+              </button>
+            ))}
           </div>
         )}
       </div>
 
       <div className="flex">
-        {/* Sidebar */}
-        <div className="w-64 bg-white shadow-lg h-screen sticky top-0 hidden lg:block">
-          <div className="p-6 border-b border-gray-200">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-forest-green rounded-full flex items-center justify-center">
-                <span className="text-white font-bold text-lg">A</span>
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-forest-green">Admin Dashboard</h1>
-                <p className="text-sm text-gray-500">Arty Affairs</p>
-              </div>
-            </div>
+        <aside className="w-64 bg-white border-r min-h-screen sticky top-16 hidden lg:block">
+          <div className="p-6 border-b">
+            <BrandLogo className="h-16 w-16 mb-4" rounded="rounded-lg" />
+            <p className="text-xs uppercase tracking-wider text-gray-400">Signed in as</p>
+            <p className="font-medium truncate">{userProfile?.name || 'Admin'}</p>
+            <p className="text-sm text-gray-500 truncate">{userProfile?.email || user?.email}</p>
+            <p className="text-xs text-forest-green mt-1">{isAdmin() ? 'Administrator' : 'Staff'}</p>
           </div>
-
-          <nav className="mt-6">
-            {sidebarItems.map((item) => {
-              const Icon = item.icon
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  className={`w-full flex items-center space-x-3 px-6 py-3 text-left transition-colors ${
-                    activeTab === item.id
-                      ? 'bg-forest-green text-white'
-                      : 'text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <Icon className="w-5 h-5" />
-                  <span className="font-medium">{item.label}</span>
-                </button>
-              )
-            })}
+          <nav className="p-3 space-y-1">
+            {sidebarItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left ${
+                  activeTab === item.id ? 'bg-forest-green text-white' : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <item.icon className="w-5 h-5" />
+                {item.label}
+              </button>
+            ))}
           </nav>
-        </div>
+          <div className="px-6 pt-4">
+            <button onClick={() => navigate('/admin/upload')} className="w-full btn-primary text-sm">
+              <Plus className="w-4 h-4 mr-2" /> Add artwork
+            </button>
+          </div>
+        </aside>
 
-        {/* Main Content */}
         <div className="flex-1 p-4 lg:p-8">
-          <div className="mb-8">
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">
-              Welcome back, Admin
-            </h2>
-            <p className="text-gray-600">Manage your store and track performance</p>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+            <div>
+              <h2 className="font-display text-3xl text-gray-900">Dashboard</h2>
+              <p className={`text-sm mt-1 ${connection.ok ? 'text-gray-500' : 'text-red-600'}`}>
+                {connection.ok ? connection.message : `Supabase error: ${connection.message}`}
+              </p>
+            </div>
+            <button onClick={handleRefresh} className="btn-secondary text-sm" disabled={refreshing}>
+              <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
           </div>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-8">
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Orders</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.totalOrders}</p>
-                </div>
-                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <ShoppingCart className="w-6 h-6 text-blue-600" />
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Revenue</p>
-                  <p className="text-2xl font-bold text-gray-900">₹{stats.totalRevenue.toFixed(2)}</p>
-                </div>
-                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                  <DollarSign className="w-6 h-6 text-green-600" />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            {[
+              { label: 'Orders', value: stats.totalOrders, icon: ShoppingCart, color: 'bg-blue-100 text-blue-700' },
+              { label: 'Revenue', value: `₹${stats.totalRevenue.toFixed(0)}`, icon: DollarSign, color: 'bg-green-100 text-green-700' },
+              { label: 'Artworks', value: stats.totalArtworks, icon: Palette, color: 'bg-purple-100 text-purple-700' },
+              { label: 'Customers', value: stats.totalUsers, icon: Users, color: 'bg-orange-100 text-orange-700' },
+            ].map((card) => (
+              <div key={card.label} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-500">{card.label}</p>
+                    <p className="text-2xl font-semibold mt-1">{loading ? '—' : card.value}</p>
+                  </div>
+                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${card.color}`}>
+                    <card.icon className="w-5 h-5" />
+                  </div>
                 </div>
               </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Artworks</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.totalArtworks}</p>
-                </div>
-                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                  <Palette className="w-6 h-6 text-purple-600" />
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Users</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.totalUsers}</p>
-                </div>
-                <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                  <Users className="w-6 h-6 text-orange-600" />
-                </div>
-              </div>
-            </div>
+            ))}
           </div>
 
-          {/* Tab Content */}
           {activeTab === 'orders' && (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-              <div className="p-6 border-b border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900">Orders Management</h3>
-                <p className="text-gray-600 mt-1">Manage and track all customer orders</p>
+            <section className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="p-6 border-b">
+                <h3 className="text-lg font-semibold">Orders</h3>
+                <p className="text-sm text-gray-500">Paid orders can be marked dispatched</p>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[800px]">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Order ID
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Customer
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Artwork
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Amount
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Payment
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {orders.map((order) => (
-                      <tr key={order.order_id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {order.order_id.slice(0, 8)}...
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              Customer
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              Order ID: {order.order_id?.slice(0, 12) || 'N/A'}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              Order #{order.order_id?.slice(0, 8) || 'N/A'}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {new Date(order.created_at).toLocaleDateString()}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          ₹{order.total_amount}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            order.payment_status === 'Paid' 
-                              ? 'bg-green-100 text-green-800'
-                              : order.payment_status === 'Pending'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {order.payment_status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            order.order_status === 'Dispatched' 
-                              ? 'bg-blue-100 text-blue-800'
-                              : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {order.order_status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          {order.payment_status === 'Paid' && order.order_status === 'Pending' && (
-                            <button
-                              onClick={() => markOrderAsDispatched(order.order_id)}
-                              className="text-forest-green hover:text-opacity-80 flex items-center space-x-1"
-                            >
-                              <Truck className="w-4 h-4" />
-                              <span>Mark Dispatched</span>
-                            </button>
-                          )}
-                        </td>
+              {loading ? (
+                <p className="p-8 text-center text-gray-500">Loading orders…</p>
+              ) : orders.length === 0 ? (
+                <div className="p-12 text-center text-gray-500">
+                  <Package className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+                  <p>No orders yet. They will appear here after checkout.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[800px]">
+                    <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+                      <tr>
+                        <th className="px-6 py-3 text-left">Order</th>
+                        <th className="px-6 py-3 text-left">Customer</th>
+                        <th className="px-6 py-3 text-left">Artwork</th>
+                        <th className="px-6 py-3 text-left">Amount</th>
+                        <th className="px-6 py-3 text-left">Payment</th>
+                        <th className="px-6 py-3 text-left">Fulfillment</th>
+                        <th className="px-6 py-3 text-left">Action</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                    </thead>
+                    <tbody className="divide-y">
+                      {orders.map((order) => {
+                        const amount = Number(order.total_amount || order.artworks?.price * (order.quantity || 1) || 0)
+                        return (
+                          <tr key={order.order_id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 text-sm font-medium">
+                              #{String(order.order_id).slice(0, 8)}
+                              <div className="text-xs text-gray-400">
+                                {new Date(order.created_at || order.order_date).toLocaleDateString()}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-sm">
+                              {order.users?.name || order.users?.email || 'Customer'}
+                            </td>
+                            <td className="px-6 py-4 text-sm">
+                              {order.artworks?.title || 'Artwork'}
+                              <div className="text-xs text-gray-400">Qty {order.quantity || 1}</div>
+                            </td>
+                            <td className="px-6 py-4 text-sm">₹{amount.toFixed(2)}</td>
+                            <td className="px-6 py-4">
+                              <span className={`px-2 py-1 text-xs rounded-full ${isPaid(order.payment_status) ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                {order.payment_status || 'unpaid'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className={`px-2 py-1 text-xs rounded-full ${isDispatched(order.order_status) ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
+                                {order.order_status || 'pending'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              {isPaid(order.payment_status) && !isDispatched(order.order_status) && (
+                                <button onClick={() => markOrderAsDispatched(order.order_id)} className="text-forest-green text-sm inline-flex items-center gap-1">
+                                  <Truck className="w-4 h-4" /> Dispatch
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
           )}
 
           {activeTab === 'artworks' && (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-              <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+            <section className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="p-6 border-b flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Artwork Management</h3>
-                  <p className="text-gray-600 mt-1">Manage your art collection</p>
+                  <h3 className="text-lg font-semibold">Artworks</h3>
+                  <p className="text-sm text-gray-500">{filteredArtworks.length} in catalog</p>
                 </div>
-                <button
-                  onClick={() => navigate('/admin/upload')}
-                  className="btn-forest-green flex items-center space-x-2"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add Artwork</span>
-                </button>
+                <div className="flex gap-3">
+                  <div className="relative">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search title or artist"
+                      className="pl-9 pr-3 py-2 border rounded-lg text-sm w-56"
+                    />
+                  </div>
+                  <button onClick={() => navigate('/admin/upload')} className="btn-primary text-sm">
+                    <Plus className="w-4 h-4 mr-1" /> Add
+                  </button>
+                </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[800px]">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Artwork
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Artist
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Category
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Price
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Quantity
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {loading ? (
+              {loading ? (
+                <p className="p-8 text-center text-gray-500">Loading artworks…</p>
+              ) : filteredArtworks.length === 0 ? (
+                <div className="p-12 text-center text-gray-500">
+                  No artworks match. Add one from Upload Artwork.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[900px]">
+                    <thead className="bg-gray-50 text-xs uppercase text-gray-500">
                       <tr>
-                        <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
-                          <div className="flex items-center justify-center">
-                            <div className="w-8 h-8 border-2 border-gray-300 border-t-forest-green rounded-full animate-spin mr-3"></div>
-                            Loading artworks...
-                          </div>
-                        </td>
+                        <th className="px-6 py-3 text-left">Artwork</th>
+                        <th className="px-6 py-3 text-left">Artist</th>
+                        <th className="px-6 py-3 text-left">Category</th>
+                        <th className="px-6 py-3 text-left">Price</th>
+                        <th className="px-6 py-3 text-left">Qty</th>
+                        <th className="px-6 py-3 text-left">Status</th>
+                        <th className="px-6 py-3 text-left">Actions</th>
                       </tr>
-                    ) : artworks.length === 0 ? (
-                      <tr>
-                        <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
-                          <div className="space-y-3">
-                            <p>No artworks found.</p>
-                            <button
-                              onClick={() => {
-                                console.log('Manual refresh triggered, current artworks:', artworks.length)
-                                fetchArtworks()
-                              }}
-                              className="text-forest-green hover:underline"
-                            >
-                              Click here to refresh
-                            </button>
-                            <p className="text-sm">or click "Add Artwork" to create your first artwork.</p>
-                          </div>
-                        </td>
-                      </tr>
-                    ) : (
-                      artworks.map((artwork) => {
-                        console.log('Rendering artwork:', artwork.artwork_id, artwork.title)
-                        return (
-                      <tr key={artwork.artwork_id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="w-12 h-12 bg-gray-200 rounded-lg mr-4 flex items-center justify-center">
-                              {artwork.image_urls && artwork.image_urls.length > 0 ? (
-                                <img 
-                                  src={getImageUrl(artwork.image_urls[0])} 
-                                  alt={artwork.title}
-                                  className="w-full h-full object-cover rounded-lg"
-                                  onError={(e) => {
-                                    e.target.src = '/placeholder-art.jpg'
-                                  }}
-                                />
-                              ) : artwork.image_url ? (
-                                <img 
-                                  src={getImageUrl(artwork.image_url)} 
-                                  alt={artwork.title}
-                                  className="w-full h-full object-cover rounded-lg"
-                                  onError={(e) => {
-                                    e.target.src = '/placeholder-art.jpg'
-                                  }}
-                                />
-                              ) : (
-                                <Palette className="w-6 h-6 text-gray-400" />
-                              )}
+                    </thead>
+                    <tbody className="divide-y">
+                      {filteredArtworks.map((artwork) => (
+                        <tr key={artwork.artwork_id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <img
+                                src={getImageUrl(artwork.image_url || artwork.image_urls?.[0]) || '/placeholder-art.jpg'}
+                                alt=""
+                                className="w-12 h-12 rounded-lg object-cover bg-gray-100"
+                                onError={(e) => { e.target.src = '/placeholder-art.jpg' }}
+                              />
+                              <span className="text-sm font-medium">{artwork.title}</span>
                             </div>
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">{artwork.title}</div>
-                              <div className="text-xs text-gray-500">
-                                {(artwork.image_urls?.length || 0) > 0 
-                                  ? `${artwork.image_urls.length} images` 
-                                  : '1 image'}
-                              </div>
+                          </td>
+                          <td className="px-6 py-4 text-sm">{artwork.artist_name}</td>
+                          <td className="px-6 py-4 text-sm capitalize">{String(artwork.category || '').replace('_', ' ')}</td>
+                          <td className="px-6 py-4 text-sm">₹{artwork.price}</td>
+                          <td className="px-6 py-4 text-sm">{artwork.quantity_available}</td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2 py-1 text-xs rounded-full ${isAvailable(artwork.status) ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                              {artwork.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex gap-3 text-sm">
+                              <button
+                                onClick={() => toggleArtworkAvailability(artwork.artwork_id, artwork.status)}
+                                className={isAvailable(artwork.status) ? 'text-red-600' : 'text-green-700'}
+                              >
+                                {isAvailable(artwork.status) ? (
+                                  <span className="inline-flex items-center gap-1"><XCircle className="w-4 h-4" /> Sold</span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1"><CheckCircle className="w-4 h-4" /> Available</span>
+                                )}
+                              </button>
+                              <button onClick={() => deleteArtwork(artwork.artwork_id)} className="text-red-600 inline-flex items-center gap-1">
+                                <Trash2 className="w-4 h-4" /> Delete
+                              </button>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {artwork.artist_name}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {artwork.category}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          ₹{artwork.price}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {artwork.quantity_available}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            artwork.status === 'Available' 
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {artwork.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <div className="flex space-x-2">
-                            <button
-                              onClick={() => toggleArtworkAvailability(artwork.artwork_id, artwork.status)}
-                              className={`flex items-center space-x-1 ${
-                                artwork.status === 'Available' 
-                                  ? 'text-red-600 hover:text-red-800'
-                                  : 'text-green-600 hover:text-green-800'
-                              }`}
-                            >
-                              {artwork.status === 'Available' ? (
-                                <>
-                                  <XCircle className="w-4 h-4" />
-                                  <span>Mark Sold</span>
-                                </>
-                              ) : (
-                                <>
-                                  <CheckCircle className="w-4 h-4" />
-                                  <span>Mark Available</span>
-                                </>
-                              )}
-                            </button>
-                            <button
-                              onClick={() => deleteArtwork(artwork.artwork_id)}
-                              className="text-red-600 hover:text-red-800 flex items-center space-x-1"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                              <span>Delete</span>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                      )
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
           )}
 
+          {activeTab === 'workshops' && <WorkshopManager />}
+
           {activeTab === 'users' && (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-              <div className="p-6 border-b border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900">User Overview</h3>
-                <p className="text-gray-600 mt-1">View all registered users and their activity</p>
+            <section className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="p-6 border-b">
+                <h3 className="text-lg font-semibold">Customers</h3>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[800px]">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        User
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Email
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Role
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Joined
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {users.map((user) => (
-                      <tr key={user.user_id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="w-10 h-10 bg-forest-green rounded-full flex items-center justify-center mr-4">
-                              <span className="text-white font-bold">
-                                {user.name?.charAt(0) || user.email?.charAt(0) || 'U'}
-                              </span>
-                            </div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {user.name || 'N/A'}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {user.email}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            user.role === 'admin' 
-                              ? 'bg-purple-100 text-purple-800'
-                              : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {user.role}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {new Date(user.created_at).toLocaleDateString()}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <button className="text-forest-green hover:text-opacity-80 flex items-center space-x-1">
-                            <Eye className="w-4 h-4" />
-                            <span>View Orders</span>
-                          </button>
-                        </td>
+              {usersRestricted && users.length === 0 && (
+                <div className="m-6 p-4 rounded-xl bg-amber-50 text-amber-900 text-sm flex gap-3">
+                  <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                  <p>
+                    Supabase is connected, but the <code>users</code> table is hidden by row-level security (anon sees 0 rows).
+                    Run <code>supabase-admin-policies.sql</code> in the Supabase SQL editor so admins can list customers and update orders.
+                  </p>
+                </div>
+              )}
+              {users.length === 0 ? (
+                <p className="p-8 text-center text-gray-500">No customer profiles visible.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+                      <tr>
+                        <th className="px-6 py-3 text-left">Name</th>
+                        <th className="px-6 py-3 text-left">Email</th>
+                        <th className="px-6 py-3 text-left">Role</th>
+                        <th className="px-6 py-3 text-left">Joined</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                    </thead>
+                    <tbody className="divide-y">
+                      {users.map((person) => (
+                        <tr key={person.user_id}>
+                          <td className="px-6 py-4 text-sm font-medium">{person.name || '—'}</td>
+                          <td className="px-6 py-4 text-sm">{person.email}</td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2 py-1 text-xs rounded-full ${person.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-700'}`}>
+                              {person.role}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm">{person.created_at ? new Date(person.created_at).toLocaleDateString() : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
           )}
 
           {activeTab === 'analytics' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Order Status Overview</h3>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-4 h-4 bg-yellow-400 rounded-full"></div>
-                      <span className="text-sm text-gray-600">Pending Orders</span>
-                    </div>
-                    <span className="text-lg font-semibold text-gray-900">{stats.pendingOrders}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-4 h-4 bg-green-400 rounded-full"></div>
-                      <span className="text-sm text-gray-600">Paid Orders</span>
-                    </div>
-                    <span className="text-lg font-semibold text-gray-900">{stats.paidOrders}</span>
-                  </div>
+              <div className="bg-white p-6 rounded-2xl border border-gray-100">
+                <h3 className="font-semibold mb-4">Fulfillment</h3>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between"><span>Pending</span><strong>{stats.pendingOrders}</strong></div>
+                  <div className="flex justify-between"><span>Paid</span><strong>{stats.paidOrders}</strong></div>
+                  <div className="flex justify-between"><span>Catalog size</span><strong>{stats.totalArtworks}</strong></div>
                 </div>
               </div>
-
-              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
-                <div className="space-y-3">
-                  <button
-                    onClick={() => setActiveTab('artworks')}
-                    className="w-full flex items-center space-x-3 p-3 text-left bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
-                  >
-                    <Palette className="w-5 h-5 text-forest-green" />
-                    <span className="text-sm font-medium text-gray-900">Manage Artworks</span>
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('orders')}
-                    className="w-full flex items-center space-x-3 p-3 text-left bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
-                  >
-                    <ShoppingCart className="w-5 h-5 text-forest-green" />
-                    <span className="text-sm font-medium text-gray-900">View Orders</span>
-                  </button>
-                  <button
-                    onClick={() => navigate('/admin/upload')}
-                    className="w-full flex items-center space-x-3 p-3 text-left bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
-                  >
-                    <Plus className="w-5 h-5 text-forest-green" />
-                    <span className="text-sm font-medium text-gray-900">Add New Artwork</span>
-                  </button>
-                </div>
+              <div className="bg-white p-6 rounded-2xl border border-gray-100 space-y-3">
+                <h3 className="font-semibold mb-2">Shortcuts</h3>
+                <button onClick={() => setActiveTab('workshops')} className="w-full text-left p-3 rounded-lg bg-cream hover:bg-gray-100">Manage workshops</button>
+                <button onClick={() => setActiveTab('artworks')} className="w-full text-left p-3 rounded-lg bg-cream hover:bg-gray-100">Manage artworks</button>
+                <button onClick={() => setActiveTab('orders')} className="w-full text-left p-3 rounded-lg bg-cream hover:bg-gray-100">View orders</button>
+                <button onClick={() => navigate('/admin/upload')} className="w-full text-left p-3 rounded-lg bg-cream hover:bg-gray-100">Upload artwork</button>
               </div>
             </div>
           )}

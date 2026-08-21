@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Upload, Link2, CheckCircle, AlertCircle, Package, Ruler } from 'lucide-react'
+import { Upload, Link2, CheckCircle, AlertCircle } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import CategoryDropdown from '../../components/CategoryDropdown'
 import toast from 'react-hot-toast'
@@ -23,6 +23,10 @@ const UploadArtworkPage = () => {
 
   const watchCategory = watch('category')
 
+  useEffect(() => {
+    register('category', { required: 'Category is required' })
+  }, [register])
+
   const availabilityOptions = [
     { value: 'available', label: 'Available' },
     { value: 'sold', label: 'Sold' }
@@ -39,103 +43,51 @@ const UploadArtworkPage = () => {
   const parsedImageUrls = useMemo(() => parseImageUrls(imageUrlsInput), [imageUrlsInput])
 
   const onSubmit = async (data) => {
-    console.log('onSubmit function called!')
-    console.log('Form data received:', data)
-    
     if (parsedImageUrls.length === 0) {
-      console.error('No image URLs provided')
       toast.error('Please enter at least one image URL')
       setUploadStatus('error')
       return
     }
 
-    console.log('Validation passed, starting upload...')
+    if (!user) {
+      toast.error('Please sign in as admin to upload')
+      return
+    }
 
     try {
       setUploading(true)
       setUploadStatus(null)
-      console.log('=== UPLOAD START ===')
-      console.log('Form data:', data)
-      console.log('Provided image URLs:', parsedImageUrls.length)
-      parsedImageUrls.forEach((url, index) => {
-        console.log(`  URL ${index + 1}:`, url)
-      })
-      
-      const imageUrl = parsedImageUrls[0] || null
 
-      // Determine if it's an original artwork based on category
-      const isOriginal = data.category === 'original'
-
-      // Category is already in correct format from dropdown
+      const imageUrl = parsedImageUrls[0]
       const artworkData = {
         artist_name: data.artist_name,
         title: data.title,
-        category: data.category, // Already in correct format: original, resin_art, giftable, bouquet, crochet, ceramic
+        category: data.category,
         description: data.description,
         price: parseFloat(data.price),
-        quantity_available: parseInt(data.quantity_available) || 1,
-        is_original: isOriginal,
+        quantity_available: parseInt(data.quantity_available, 10) || 1,
+        is_original: data.category === 'original',
         status: data.availability_status === 'available' ? 'available' : 'sold',
-        image_url: imageUrl, // Keep for backwards compatibility
-        image_urls: parsedImageUrls.length > 0 ? parsedImageUrls : null,
-        created_at: new Date().toISOString()
+        image_url: imageUrl,
+        image_urls: JSON.stringify(parsedImageUrls),
       }
 
-      console.log('Artwork data prepared:', artworkData)
+      const { error } = await supabase.from('artworks').insert([artworkData]).select().single()
 
-      console.log('Current user:', user)
-      
-      console.log('Inserting artwork data directly...')
-      console.log('Data to insert:', artworkData)
-      
-      // Try insert with fetch API directly
-      console.log('Attempting insert with fetch API...')
-      
-      try {
-        const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliZ3p0aWxuYWVjamV4c2h4bXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc2ODEzMTIsImV4cCI6MjA3MzI1NzMxMn0.BXVkSNLdZb6y6SyzBGIcr7MiFDsjUwY9LU01dJwmGRo'
-        
-        console.log('Using anon key:', anonKey.substring(0, 20) + '...')
-        
-        const response = await fetch('https://ibgztilnaecjexshxmrz.supabase.co/rest/v1/artworks', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': anonKey,
-            'Authorization': `Bearer ${anonKey}`,
-            'Prefer': 'return=representation'
-          },
-          body: JSON.stringify(artworkData)
-        })
-        
-        const insertedData = await response.json()
-        console.log('Insert completed via fetch')
-        console.log('Result data:', insertedData)
-        
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${JSON.stringify(insertedData)}`)
-        }
-        
-        setUploadStatus('success')
-        reset()
-        setImageUrlsInput('')
-        toast.success('Artwork uploaded successfully!')
-        return
-        
-      } catch (fetchError) {
-        console.error('Fetch API failed:', fetchError)
-        throw fetchError
-      }
-  } catch (error) {
-    console.error('❌ UPLOAD ERROR ❌')
-    console.error('Error:', error)
-    console.error('Error message:', error.message)
-    setUploadStatus('error')
-    toast.error(`Upload failed: ${error.message || 'Please try again.'}`)
-  } finally {
-    setUploading(false)
-    console.log('Upload process finished')
+      if (error) throw error
+
+      setUploadStatus('success')
+      reset()
+      setImageUrlsInput('')
+      toast.success('Artwork uploaded successfully!')
+    } catch (error) {
+      console.error('Upload error:', error)
+      setUploadStatus('error')
+      toast.error(error.message || 'Upload failed')
+    } finally {
+      setUploading(false)
+    }
   }
-}
 
 
   return (
@@ -162,22 +114,7 @@ const UploadArtworkPage = () => {
       <div className="container-max section-padding">
         <div className="max-w-2xl mx-auto">
           <div className="bg-white rounded-lg shadow-md p-8">
-            <form onSubmit={(e) => {
-              e.preventDefault()
-              console.log('🎯 FORM SUBMIT EVENT FIRED')
-              console.log('Preventing default, calling handleSubmit...')
-              handleSubmit(onSubmit, (errors) => {
-                console.log('⚠️ FORM VALIDATION FAILED')
-                console.log('Validation errors:', errors)
-                console.log('Form has errors:', Object.keys(errors).length > 0)
-                toast.error('Please fill in all required fields')
-              })(e)
-            }} className="space-y-6">
-              {/* Debug: Show form state */}
-              <div className="bg-gray-100 p-2 rounded text-xs">
-                Debug: Category = {watchCategory || 'not selected'} | 
-                Errors = {Object.keys(errors).length}
-              </div>
+            <form onSubmit={handleSubmit(onSubmit, () => toast.error('Please fill in all required fields'))} className="space-y-6">
               {/* Artist Name */}
               <div>
                 <label htmlFor="artist_name" className="block text-sm font-medium text-gray-700 mb-2">
@@ -220,7 +157,7 @@ const UploadArtworkPage = () => {
                   </label>
                   <CategoryDropdown
                     value={watchCategory || ''}
-                    onChange={(value) => setValue('category', value)}
+                    onChange={(value) => setValue('category', value, { shouldValidate: true })}
                     error={errors.category?.message}
                     required
                   />
@@ -375,11 +312,6 @@ const UploadArtworkPage = () => {
               <button
                 type="submit"
                 disabled={uploading}
-                onClick={(e) => {
-                  console.log('Button clicked')
-                  console.log('Uploading state:', uploading)
-                  console.log('Image URLs provided:', parsedImageUrls.length)
-                }}
                 className="w-full btn-primary flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {uploading ? (

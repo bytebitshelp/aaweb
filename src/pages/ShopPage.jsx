@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { fetchPublicArtworks } from '../lib/supabase'
 import ArtworkCard from '../components/ArtworkCard'
 import FilterBar from '../components/FilterBar'
 import ProductPopup from '../components/ProductPopup'
 import { Loader2 } from 'lucide-react'
-import { normalizeArtworkMedia, getImageUrl } from '../lib/imageUtils'
+import { normalizeArtworkMedia } from '../lib/imageUtils'
 
 const ShopPage = () => {
   const [artworks, setArtworks] = useState([])
@@ -24,111 +24,22 @@ const ShopPage = () => {
   const fetchArtworks = async () => {
     try {
       setLoading(true)
-      const { data, error } = await supabase
-        .from('artworks')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (error) {
-        console.error('Error fetching artworks:', error)
-        // Use mock data if Supabase is not configured
-        setArtworks(getMockArtworks())
-      } else {
-        const processed = (data || []).map((artwork) => {
-          const normalizedMedia = normalizeArtworkMedia(artwork)
-          return {
-            ...artwork,
-            image_urls: normalizedMedia.image_urls,
-            image_url: normalizedMedia.image_url
-          }
-        })
-
-        setArtworks(processed)
-      }
+      const data = await fetchPublicArtworks()
+      const processed = (data || []).map((artwork) => {
+        const normalizedMedia = normalizeArtworkMedia(artwork)
+        return {
+          ...artwork,
+          image_urls: normalizedMedia.image_urls,
+          image_url: normalizedMedia.image_url
+        }
+      })
+      setArtworks(processed)
     } catch (error) {
       console.error('Error:', error)
-      setArtworks(getMockArtworks())
+      setArtworks([])
     } finally {
       setLoading(false)
     }
-  }
-
-  // Mock data for demonstration
-  const getMockArtworks = () => {
-    const items = [
-    {
-      id: '1',
-      artist_name: 'Sarah Johnson',
-      title: 'Forest Dreams',
-      category: 'original',
-      description: 'A beautiful acrylic painting capturing the essence of a mystical forest.',
-      price: 299.99,
-      image_url: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=500&h=500&fit=crop',
-      availability_status: 'available',
-      created_at: '2024-01-15T10:00:00Z'
-    },
-    {
-      id: '2',
-      artist_name: 'Michael Chen',
-      title: 'Ocean Waves',
-      category: 'resin_art',
-      description: 'Stunning resin art piece with ocean blue tones and metallic accents.',
-      price: 199.99,
-      image_url: 'https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?w=500&h=500&fit=crop',
-      availability_status: 'available',
-      created_at: '2024-01-14T15:30:00Z'
-    },
-    {
-      id: '3',
-      artist_name: 'Emma Rodriguez',
-      title: 'Sunset Bouquet',
-      category: 'bouquet',
-      description: 'Artistic flower arrangement perfect for special occasions.',
-      price: 89.99,
-      image_url: 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=500&h=500&fit=crop',
-      availability_status: 'sold',
-      created_at: '2024-01-13T09:15:00Z'
-    },
-    {
-      id: '4',
-      artist_name: 'David Park',
-      title: 'Gift Hamper Deluxe',
-      category: 'giftable',
-      description: 'Premium gift hamper with art supplies and handmade items.',
-      price: 149.99,
-      image_url: 'https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?w=500&h=500&fit=crop',
-      availability_status: 'available',
-      created_at: '2024-01-12T14:20:00Z'
-    },
-    {
-      id: '5',
-      artist_name: 'Lisa Wang',
-      title: 'Abstract Emotions',
-      category: 'original',
-      description: 'Bold abstract painting expressing deep emotions through color.',
-      price: 399.99,
-      image_url: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=500&h=500&fit=crop',
-      availability_status: 'available',
-      created_at: '2024-01-11T11:45:00Z'
-    },
-    {
-      id: '6',
-      artist_name: 'James Wilson',
-      title: 'Geometric Harmony',
-      category: 'resin_art',
-      description: 'Modern geometric resin art with perfect symmetry and balance.',
-      price: 249.99,
-      image_url: 'https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?w=500&h=500&fit=crop',
-      availability_status: 'available',
-      created_at: '2024-01-10T16:30:00Z'
-    }
-  ]
-
-    return items.map(item => ({
-      ...item,
-      image_urls: item.image_url ? [getImageUrl(item.image_url)] : [],
-      image_url: item.image_url ? getImageUrl(item.image_url) : null
-    }))
   }
 
   // Get unique categories
@@ -186,12 +97,12 @@ const ShopPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-cream">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200">
+      <div className="bg-white border-b border-gray-100">
         <div className="container-max section-padding">
           <div className="text-center">
-            <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+            <h1 className="font-display text-4xl md:text-5xl text-gray-900 mb-4">
               Art Gallery
             </h1>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">

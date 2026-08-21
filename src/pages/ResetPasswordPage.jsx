@@ -66,9 +66,7 @@ const ResetPasswordPage = () => {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
-          <div className="w-16 h-16 bg-forest-green bg-opacity-10 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Lock className="w-8 h-8 text-forest-green" />
-          </div>
+          <img src="/logo.jpg" alt="Arty Affairs" className="w-20 h-20 object-cover rounded-xl mx-auto mb-4" />
           <h2 className="text-3xl font-bold text-gray-900">Reset Password</h2>
           <p className="mt-2 text-gray-600">Enter your new password below</p>
         </div>

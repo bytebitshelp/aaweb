@@ -4,73 +4,47 @@ import { useAuth } from '../contexts/AuthContext'
 import { Package, Clock, Truck, CheckCircle, Eye, Loader2 } from 'lucide-react'
 
 const OrderHistoryPage = () => {
-  const { userProfile } = useAuth()
+  const { user, userProfile } = useAuth()
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
 
-  // Mock data for demonstration
-  const mockOrders = [
-    {
-      order_id: '1',
-      artwork_title: 'Forest Dreams',
-      artist_name: 'Sarah Johnson',
-      quantity: 1,
-      order_status: 'dispatched',
-      payment_status: 'paid',
-      order_date: '2024-01-15T10:00:00Z',
-      total_amount: 299.99,
-      image_url: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=500&h=500&fit=crop'
-    },
-    {
-      order_id: '2',
-      artwork_title: 'Ocean Waves',
-      artist_name: 'Michael Chen',
-      quantity: 2,
-      order_status: 'pending',
-      payment_status: 'paid',
-      order_date: '2024-01-14T15:30:00Z',
-      total_amount: 399.98,
-      image_url: 'https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?w=500&h=500&fit=crop'
-    },
-    {
-      order_id: '3',
-      artwork_title: 'Sunset Bouquet',
-      artist_name: 'Emma Rodriguez',
-      quantity: 1,
-      order_status: 'pending',
-      payment_status: 'paid',
-      order_date: '2024-01-13T09:15:00Z',
-      total_amount: 89.99,
-      image_url: 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=500&h=500&fit=crop'
-    }
-  ]
-
   useEffect(() => {
-    if (userProfile) {
+    if (user?.id || userProfile?.user_id) {
       fetchOrders()
     }
-  }, [userProfile])
+  }, [user, userProfile])
 
   const fetchOrders = async () => {
     try {
       setLoading(true)
-      // In a real implementation, fetch from Supabase
-      // const { data, error } = await supabase
-      //   .from('orders')
-      //   .select(`
-      //     *,
-      //     artworks (title, artist_name, image_url)
-      //   `)
-      //   .eq('user_id', userProfile.user_id)
-      //   .order('order_date', { ascending: false })
+      const userId = user?.id || userProfile?.user_id
+      const { data, error } = await supabase
+        .from('orders')
+        .select(`
+          *,
+          artworks (title, artist_name, image_url, image_urls, price)
+        `)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
 
-      // For demo purposes, using mock data
-      setTimeout(() => {
-        setOrders(mockOrders)
-        setLoading(false)
-      }, 1000)
+      if (error) throw error
+
+      const mapped = (data || []).map((order) => ({
+        ...order,
+        artwork_title: order.artworks?.title || 'Artwork',
+        artist_name: order.artworks?.artist_name || '',
+        image_url: order.artworks?.image_url || order.artworks?.image_urls?.[0] || '/placeholder-art.jpg',
+        order_date: order.created_at || order.order_date,
+        order_status: (order.order_status || 'pending').toLowerCase(),
+        payment_status: (order.payment_status || 'paid').toLowerCase(),
+        total_amount: Number(order.total_amount || 0)
+      }))
+
+      setOrders(mapped)
     } catch (error) {
       console.error('Error fetching orders:', error)
+      setOrders([])
+    } finally {
       setLoading(false)
     }
   }
@@ -118,7 +92,7 @@ const OrderHistoryPage = () => {
     }
   }
 
-  if (!userProfile) {
+  if (!user && !userProfile) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -232,9 +206,9 @@ const OrderHistoryPage = () => {
                         </p>
                       </div>
 
-                      <button className="btn-secondary flex items-center space-x-2 text-sm px-4 py-2">
+                      <button className="btn-secondary flex items-center space-x-2 text-sm px-4 py-2" disabled>
                         <Eye className="w-4 h-4" />
-                        <span>View Details</span>
+                        <span>Order #{String(order.order_id).slice(0, 8)}</span>
                       </button>
                     </div>
                   </div>
