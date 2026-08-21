@@ -46,6 +46,9 @@ async function workshopsRequest(path, options = {}) {
   const data = await response.json().catch(() => null)
   if (!response.ok) {
     const message = data?.message || data?.error_description || `Workshop request failed (${response.status})`
+    if (String(message).includes('registration_link')) {
+      throw new Error('Add the registration_link column in Supabase: run supabase-admin-policies.sql')
+    }
     throw new Error(message)
   }
   return data

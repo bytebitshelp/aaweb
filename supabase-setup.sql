@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS workshops (
     date TIMESTAMP WITH TIME ZONE NOT NULL,
     is_upcoming BOOLEAN DEFAULT true,
     image_url TEXT,
+    registration_link TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

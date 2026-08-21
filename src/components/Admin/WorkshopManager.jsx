@@ -8,6 +8,7 @@ const emptyForm = {
   description: '',
   date: '',
   image_url: '',
+  registration_link: '',
   is_upcoming: true,
 }
 
@@ -57,6 +58,7 @@ const WorkshopManager = () => {
       description: workshop.description || '',
       date: toLocalInput(workshop.date),
       image_url: workshop.image_url || '',
+      registration_link: workshop.registration_link || '',
       is_upcoming: Boolean(workshop.is_upcoming),
     })
     setShowForm(true)
@@ -67,6 +69,7 @@ const WorkshopManager = () => {
     description: form.description.trim(),
     date: form.date ? new Date(form.date).toISOString() : new Date().toISOString(),
     image_url: form.image_url.trim() || null,
+    registration_link: form.registration_link.trim() || null,
     is_upcoming: Boolean(form.is_upcoming),
   })
 
@@ -176,6 +179,16 @@ const WorkshopManager = () => {
                 onChange={(e) => setForm({ ...form, image_url: e.target.value })}
                 placeholder="https://..."
               />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium mb-1">Registration link</label>
+              <input
+                className="input-field"
+                value={form.registration_link}
+                onChange={(e) => setForm({ ...form, registration_link: e.target.value })}
+                placeholder="https://forms.gle/... or your booking URL"
+              />
+              <p className="text-xs text-gray-500 mt-1">Join Now on the public page opens this link.</p>
             </div>
             <label className="flex items-center gap-2 text-sm">
               <input

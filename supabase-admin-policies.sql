@@ -52,6 +52,8 @@ CREATE POLICY "Admins can update orders" ON orders
   FOR UPDATE TO authenticated
   USING (lower(auth.jwt() ->> 'email') = 'admin@artyaffairs.com');
 
+ALTER TABLE workshops ADD COLUMN IF NOT EXISTS registration_link TEXT;
+
 ALTER TABLE workshops ENABLE ROW LEVEL SECURITY;
 GRANT SELECT, INSERT, UPDATE, DELETE ON workshops TO anon, authenticated;
 

@@ -2,7 +2,13 @@ import { useState, useEffect } from 'react'
 import { fetchPublicWorkshops } from '../lib/supabase'
 import { Calendar, Clock, Users, MapPin, ArrowRight, Image as ImageIcon } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { sendSupportEmail, buildHtmlFromObject } from '../services/resendEmail'
+
+const registrationHref = (link) => {
+  const value = String(link || '').trim()
+  if (!value) return ''
+  if (/^https?:\/\//i.test(value)) return value
+  return `https://${value}`
+}
 
 const WorkshopsPage = () => {
   const [upcomingWorkshops, setUpcomingWorkshops] = useState([])
@@ -53,28 +59,13 @@ const WorkshopsPage = () => {
     })
   }
 
-  const handleJoinWorkshop = async (workshop) => {
-    const toastId = `join-${workshop.id}`
-    toast.loading('Registering your interest...', { id: toastId })
-
-    const html = buildHtmlFromObject('Workshop Enquiry', [
-      { label: 'Workshop', value: workshop.name },
-      { label: 'Scheduled For', value: `${formatDate(workshop.date)} at ${formatTime(workshop.date)}` },
-      { label: 'Description', value: workshop.description }
-    ])
-
-    const emailResult = await sendSupportEmail({
-      subject: `Workshop enquiry - ${workshop.name}`,
-      html
-    })
-
-    toast.dismiss(toastId)
-
-    if (emailResult.success) {
-      toast.success('Thanks! We will contact you with workshop details soon.')
-    } else {
-      toast.error(emailResult.error || 'Unable to send your request. Please try again later.')
+  const handleJoinWorkshop = (workshop) => {
+    const href = registrationHref(workshop.registration_link)
+    if (!href) {
+      toast.error('Registration is not open for this workshop yet.')
+      return
     }
+    window.location.assign(href)
   }
 
   if (loading) {
