@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Calendar, Plus, Pencil, Trash2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { supabase, fetchPublicWorkshops } from '../../lib/supabase'
+import { fetchPublicWorkshops, createWorkshop, updateWorkshop, deleteWorkshop } from '../../lib/supabase'
 
 const emptyForm = {
   name: '',
@@ -80,12 +80,11 @@ const WorkshopManager = () => {
     setSaving(true)
     try {
       const body = payload()
-      const query = editingId
-        ? supabase.from('workshops').update(body).eq('id', editingId)
-        : supabase.from('workshops').insert([body])
-
-      const { error } = await query
-      if (error) throw error
+      if (editingId) {
+        await updateWorkshop(editingId, body)
+      } else {
+        await createWorkshop(body)
+      }
 
       toast.success(editingId ? 'Workshop updated' : 'Workshop added')
       setShowForm(false)
@@ -100,28 +99,24 @@ const WorkshopManager = () => {
   }
 
   const toggleUpcoming = async (workshop) => {
-    const { error } = await supabase
-      .from('workshops')
-      .update({ is_upcoming: !workshop.is_upcoming })
-      .eq('id', workshop.id)
-
-    if (error) {
+    try {
+      await updateWorkshop(workshop.id, { is_upcoming: !workshop.is_upcoming })
+      toast.success(workshop.is_upcoming ? 'Moved to past events' : 'Marked as upcoming')
+      loadWorkshops()
+    } catch (error) {
       toast.error(error.message || 'Could not update status')
-      return
     }
-    toast.success(workshop.is_upcoming ? 'Moved to past events' : 'Marked as upcoming')
-    loadWorkshops()
   }
 
-  const deleteWorkshop = async (workshop) => {
+  const removeWorkshop = async (workshop) => {
     if (!window.confirm(`Delete “${workshop.name}”?`)) return
-    const { error } = await supabase.from('workshops').delete().eq('id', workshop.id)
-    if (error) {
+    try {
+      await deleteWorkshop(workshop.id)
+      toast.success('Workshop deleted')
+      loadWorkshops()
+    } catch (error) {
       toast.error(error.message || 'Could not delete workshop')
-      return
     }
-    toast.success('Workshop deleted')
-    loadWorkshops()
   }
 
   return (
@@ -247,7 +242,7 @@ const WorkshopManager = () => {
                       <button onClick={() => toggleUpcoming(workshop)} className="text-gray-700">
                         {workshop.is_upcoming ? 'Mark past' : 'Mark upcoming'}
                       </button>
-                      <button onClick={() => deleteWorkshop(workshop)} className="text-red-600 inline-flex items-center gap-1">
+                      <button onClick={() => removeWorkshop(workshop)} className="text-red-600 inline-flex items-center gap-1">
                         <Trash2 className="w-4 h-4" /> Delete
                       </button>
                     </div>

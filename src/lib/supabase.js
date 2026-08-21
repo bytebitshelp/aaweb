@@ -31,21 +31,58 @@ export async function fetchPublicArtworks() {
   return response.json()
 }
 
-export async function fetchPublicWorkshops() {
-  const response = await fetch(
-    `${supabaseUrl}/rest/v1/workshops?select=*&order=date.desc`,
-    {
-      headers: {
-        apikey: supabaseAnonKey,
-        Authorization: `Bearer ${supabaseAnonKey}`,
-      },
-    }
-  )
+const workshopsHeaders = {
+  apikey: supabaseAnonKey,
+  Authorization: `Bearer ${supabaseAnonKey}`,
+  'Content-Type': 'application/json',
+  Prefer: 'return=representation',
+}
 
+async function workshopsRequest(path, options = {}) {
+  const response = await fetch(`${supabaseUrl}/rest/v1/workshops${path}`, {
+    ...options,
+    headers: { ...workshopsHeaders, ...(options.headers || {}) },
+  })
+  const data = await response.json().catch(() => null)
   if (!response.ok) {
-    const body = await response.text()
-    throw new Error(body || `Could not load workshops (${response.status})`)
+    const message = data?.message || data?.error_description || `Workshop request failed (${response.status})`
+    throw new Error(message)
   }
+  return data
+}
 
-  return response.json()
+export async function fetchPublicWorkshops() {
+  return workshopsRequest('?select=*&order=date.desc', { method: 'GET' })
+}
+
+export async function createWorkshop(payload) {
+  const rows = await workshopsRequest('', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new Error('Workshop was not created. Run supabase-admin-policies.sql in the Supabase SQL editor.')
+  }
+  return rows[0]
+}
+
+export async function updateWorkshop(id, payload) {
+  const rows = await workshopsRequest(`?id=eq.${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new Error('Workshop was not updated. Run supabase-admin-policies.sql in the Supabase SQL editor.')
+  }
+  return rows[0]
+}
+
+export async function deleteWorkshop(id) {
+  const rows = await workshopsRequest(`?id=eq.${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new Error('Workshop was not deleted. Run supabase-admin-policies.sql in the Supabase SQL editor.')
+  }
+  return rows[0]
 }

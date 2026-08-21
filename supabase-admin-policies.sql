@@ -53,9 +53,13 @@ CREATE POLICY "Admins can update orders" ON orders
   USING (lower(auth.jwt() ->> 'email') = 'asadmohammed181105@gmail.com');
 
 ALTER TABLE workshops ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON workshops TO anon, authenticated;
+
 DROP POLICY IF EXISTS "Public can view workshops" ON workshops;
 DROP POLICY IF EXISTS "Anyone can view workshops" ON workshops;
 DROP POLICY IF EXISTS "Public can insert workshops" ON workshops;
+DROP POLICY IF EXISTS "Public can update workshops" ON workshops;
+DROP POLICY IF EXISTS "Public can delete workshops" ON workshops;
 DROP POLICY IF EXISTS "Authenticated users can insert workshops" ON workshops;
 DROP POLICY IF EXISTS "Authenticated users can update workshops" ON workshops;
 DROP POLICY IF EXISTS "Authenticated users can delete workshops" ON workshops;
@@ -63,9 +67,9 @@ DROP POLICY IF EXISTS "Authenticated users can delete workshops" ON workshops;
 CREATE POLICY "Anyone can view workshops" ON workshops
   FOR SELECT TO anon, authenticated
   USING (true);
-CREATE POLICY "Authenticated users can insert workshops" ON workshops
-  FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "Authenticated users can update workshops" ON workshops
-  FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "Authenticated users can delete workshops" ON workshops
-  FOR DELETE TO authenticated USING (true);
+CREATE POLICY "Public can insert workshops" ON workshops
+  FOR INSERT TO anon, authenticated WITH CHECK (true);
+CREATE POLICY "Public can update workshops" ON workshops
+  FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Public can delete workshops" ON workshops
+  FOR DELETE TO anon, authenticated USING (true);
