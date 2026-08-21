@@ -5,7 +5,7 @@ import { Mail, ArrowLeft, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const ForgotPasswordPage = () => {
-  const [email, setEmail] = useState('asadmohammed181105@gmail.com')
+  const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [emailSent, setEmailSent] = useState(false)
 

@@ -132,7 +132,7 @@ CREATE INDEX IF NOT EXISTS idx_workshops_date ON workshops(date);
 INSERT INTO admin_emails (email, created_by) VALUES
 ('admin@artyaffairs.com', 'system'),
 ('your-email@domain.com', 'system'),
-('asadmohammed181105@gmail.com', 'owner')
+('admin@artyaffairs.com', 'owner')
 ON CONFLICT (email) DO NOTHING;
 
 -- Insert some sample data for testing

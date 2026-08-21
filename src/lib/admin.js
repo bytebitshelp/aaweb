@@ -7,7 +7,7 @@ export const getAdminEmails = () => {
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean)
 
-  const fallback = 'asadmohammed181105@gmail.com'
+  const fallback = 'admin@artyaffairs.com'
   return fromEnv.includes(fallback) ? fromEnv : [...fromEnv, fallback]
 }
 

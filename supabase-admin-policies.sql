@@ -33,7 +33,7 @@ CREATE POLICY "Users can view own profile" ON users
 
 CREATE POLICY "Admins can view all users by email" ON users
   FOR SELECT TO authenticated
-  USING (lower(auth.jwt() ->> 'email') = 'asadmohammed181105@gmail.com');
+  USING (lower(auth.jwt() ->> 'email') = 'admin@artyaffairs.com');
 
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can view own orders" ON orders;
@@ -46,11 +46,11 @@ CREATE POLICY "Users can view own orders" ON orders
 
 CREATE POLICY "Admins can view all orders" ON orders
   FOR SELECT TO authenticated
-  USING (lower(auth.jwt() ->> 'email') = 'asadmohammed181105@gmail.com');
+  USING (lower(auth.jwt() ->> 'email') = 'admin@artyaffairs.com');
 
 CREATE POLICY "Admins can update orders" ON orders
   FOR UPDATE TO authenticated
-  USING (lower(auth.jwt() ->> 'email') = 'asadmohammed181105@gmail.com');
+  USING (lower(auth.jwt() ->> 'email') = 'admin@artyaffairs.com');
 
 ALTER TABLE workshops ENABLE ROW LEVEL SECURITY;
 GRANT SELECT, INSERT, UPDATE, DELETE ON workshops TO anon, authenticated;
